@@ -9,6 +9,9 @@ import org.bukkit.event.*;
 import org.bukkit.event.entity.*;
 import org.bukkit.event.player.*;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.NamespacedKey;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.BoundingBox;
 import java.io.*;
@@ -31,9 +34,12 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     final Map<UUID, Pending> dropped = new HashMap<>();
     File file;
     long ticks;
+    NamespacedKey petKey;
+    final Map<UUID, Long> eatingUntil = new HashMap<>();
 
     @Override public void onEnable() {
         getDataFolder().mkdirs();
+        petKey = new NamespacedKey(this, "owner");
         file = new File(getDataFolder(), "pets.yml");
         load();
         Bukkit.getPluginManager().registerEvents(this, this);
@@ -57,6 +63,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         return e instanceof Fox fox && fox.isValid() ? fox : null;
     }
     void protect(Fox fox, Pet pet) {
+        fox.getPersistentDataContainer().set(petKey, PersistentDataType.STRING, pet.owner.toString());
         fox.setInvulnerable(true);
         fox.setPersistent(true);
         fox.setRemoveWhenFarAway(false);
@@ -98,6 +105,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     void tick() {
         ticks += 10;
         dropped.entrySet().removeIf(e -> ticks >= e.getValue().expires());
+        eatingUntil.entrySet().removeIf(e -> { if (ticks < e.getValue()) return false; Entity entity = Bukkit.getEntity(e.getKey()); if (entity instanceof Fox fox) setEating(fox, false); return true; });
         for (Pet pet : pets.values()) {
             Fox fox = find(pet, false);
             if (fox == null) continue;
@@ -108,7 +116,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 fox.getPathfinder().stopPathfinding();
                 fox.setSitting(true);
                 Location seat = pet.stay ? pet.seat : pet.last;
-                if (seat != null && seat.getWorld() == fox.getWorld() && seat.distanceSquared(fox.getLocation()) > 0.3) {
+                if (pet.stay && seat != null && seat.getWorld() == fox.getWorld() && seat.distanceSquared(fox.getLocation()) > 0.09) {
                     fox.teleport(seat);
                 }
                 if (owner != null && owner.getWorld() == fox.getWorld() && owner.getLocation().distanceSquared(fox.getLocation()) < 64) {
@@ -155,6 +163,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             ItemStack incoming = item.getItemStack().clone();
             ItemStack old = fox.getEquipment().getItemInMainHand().clone();
             fox.getEquipment().setItemInMainHand(incoming);
+            if (pets.get(pending.owner()).stay && isChicken(incoming)) eatChicken(fox, pets.get(pending.owner()));
             item.remove();
             dropped.remove(id);
             if (!old.getType().isAir()) {
@@ -163,13 +172,16 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             }
         }
     }
+    boolean isManaged(Fox fox) {
+        return owners.containsKey(fox.getUniqueId()) || fox.getPersistentDataContainer().has(petKey, PersistentDataType.STRING);
+    }
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onDrop(PlayerDropItemEvent e) {
         Pet pet = pets.get(e.getPlayer().getUniqueId());
         if (pet != null && pet.fox != null) dropped.put(e.getItemDrop().getUniqueId(), new Pending(pet.owner, ticks + 100));
     }
     @EventHandler public void onPickup(EntityPickupItemEvent e) {
-        if (e.getEntity() instanceof Fox fox && owners.containsKey(fox.getUniqueId())) e.setCancelled(true);
+        if (e.getEntity() instanceof Fox fox && isManaged(fox)) e.setCancelled(true);
     }
     @EventHandler public void onDamage(EntityDamageEvent e) {
         if (e.getEntity() instanceof Fox fox && owners.containsKey(fox.getUniqueId())) e.setCancelled(true);
@@ -184,10 +196,36 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         e.setCancelled(true);
         Player p = e.getPlayer();
         if (!id.equals(p.getUniqueId())) { tell(p, "&cThis fox belongs to another player."); return; }
-        if (!p.getInventory().getItemInMainHand().getType().isAir()) return;
+        ItemStack hand = p.getInventory().getItemInMainHand();
+        if (pet != null && pet.stay && isChicken(hand)) {
+            if (hand.getAmount() == 1) p.getInventory().setItemInMainHand(null);
+            else hand.setAmount(hand.getAmount() - 1);
+            eatChicken(fox, pet);
+            tell(p, "&aSnowy enjoyed the chicken!");
+            return;
+        }
+        if (!hand.getType().isAir()) return;
         Pet pet = pets.get(id);
         sit(fox, pet, !pet.stay);
         tell(p, pet.stay ? "&eSnowy is sitting!" : "&aSnowy is following!");
+    }
+    boolean isChicken(ItemStack item) {
+        if (item == null) return false;
+        return switch (item.getType()) {
+            case CHICKEN, COOKED_CHICKEN -> true;
+            default -> false;
+        };
+    }
+    void setEating(Fox fox, boolean eating) {
+        try { fox.getClass().getMethod("setEating", boolean.class).invoke(fox, eating); }
+        catch (ReflectiveOperationException ignored) { /* Animation unavailable on this server build. */ }
+    }
+    void eatChicken(Fox fox, Pet pet) {
+        if (!pet.stay) return;
+        setEating(fox, true);
+        eatingUntil.put(fox.getUniqueId(), ticks + 30);
+        fox.getWorld().playSound(fox.getLocation(), Sound.ENTITY_GENERIC_EAT, 0.65f, 1.3f);
+        fox.getWorld().spawnParticle(Particle.ITEM, fox.getLocation().add(0, .4, 0), 6, .12, .12, .12, .02, new ItemStack(Material.COOKED_CHICKEN));
     }
     @EventHandler public void onQuit(PlayerQuitEvent e) {
         Pet pet = pets.get(e.getPlayer().getUniqueId());
@@ -247,7 +285,9 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 if (pet != null && pet.fox != null) { tell(p, "&cYou already own a fox."); break; }
                 Fox nearest = null; double best = 25;
                 for (Entity entity : p.getNearbyEntities(5, 5, 5)) {
-                    if (entity instanceof Fox candidate && !owners.containsKey(candidate.getUniqueId())) {
+                    if (entity instanceof Fox candidate && !owners.containsKey(candidate.getUniqueId())
+                            && (candidate.getPersistentDataContainer().get(petKey, PersistentDataType.STRING) == null
+                                || p.getUniqueId().toString().equals(candidate.getPersistentDataContainer().get(petKey, PersistentDataType.STRING)))) {
                         double d = candidate.getLocation().distanceSquared(p.getLocation());
                         if (d < best) { best = d; nearest = candidate; }
                     }
