@@ -203,6 +203,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         e.setCancelled(true);
         Player p = e.getPlayer();
         if (!id.equals(p.getUniqueId())) { tell(p, "&cThis fox belongs to another player."); return; }
+        Pet pet = pets.get(id);
         ItemStack hand = p.getInventory().getItemInMainHand();
         if (pet != null && pet.stay && isChicken(hand)) {
             if (hand.getAmount() == 1) p.getInventory().setItemInMainHand(null);
@@ -212,7 +213,6 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             return;
         }
         if (!hand.getType().isAir()) return;
-        Pet pet = pets.get(id);
         sit(fox, pet, !pet.stay);
         tell(p, pet.stay ? "&eSnowy is sitting!" : "&aSnowy is following!");
     }
