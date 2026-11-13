@@ -74,7 +74,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         fox.setCustomName(pet.name);
         fox.setCustomNameVisible(true);
         fox.setTarget(null);
-        fox.setAI(true);
+        fox.setAI(!pet.stay && Bukkit.getPlayer(pet.owner) != null);
         Player p = Bukkit.getPlayer(pet.owner);
         if (p != null) fox.setFirstTrustedPlayer(p);
     }
@@ -84,6 +84,8 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         pet.previous = null; pet.stuck = 0; pet.repath = 0;
         fox.getPathfinder().stopPathfinding();
         fox.setSitting(value);
+        fox.setAI(!value);
+        if (value) fox.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
         save();
     }
     void summon(Player p) {
@@ -115,12 +117,10 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             if (owner == null || pet.stay) {
                 fox.getPathfinder().stopPathfinding();
                 fox.setSitting(true);
+                fox.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
                 Location seat = pet.stay ? pet.seat : pet.last;
                 if (pet.stay && seat != null && seat.getWorld() == fox.getWorld() && seat.distanceSquared(fox.getLocation()) > 0.09) {
                     fox.teleport(seat);
-                }
-                if (owner != null && owner.getWorld() == fox.getWorld() && owner.getLocation().distanceSquared(fox.getLocation()) < 64) {
-                    try { fox.lookAt(owner); } catch (Exception ignored) {}
                 }
             } else {
                 fox.setSitting(false);
@@ -197,6 +197,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         if (e.getEntity() instanceof Fox fox && owners.containsKey(fox.getUniqueId())) e.setCancelled(true);
     }
     @EventHandler public void onInteract(PlayerInteractEntityEvent e) {
+        if (e.getHand() != EquipmentSlot.HAND) return;
         if (!(e.getRightClicked() instanceof Fox fox)) return;
         UUID id = owners.get(fox.getUniqueId());
         if (id == null) return;
