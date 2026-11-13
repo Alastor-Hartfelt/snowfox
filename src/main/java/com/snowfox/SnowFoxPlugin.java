@@ -26,6 +26,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         boolean stay, particles;
         Location last, seat, previous;
         int stuck, repath;
+        Location lastGoal;
         Pet(UUID owner) { this.owner = owner; }
     }
     record Pending(UUID owner, long expires) {}
@@ -47,7 +48,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             PluginCommand command = getCommand(name);
             if (command != null) { command.setExecutor(this); command.setTabCompleter(this); }
         }
-        Bukkit.getScheduler().runTaskTimer(this, this::tick, 10, 10);
+        Bukkit.getScheduler().runTaskTimer(this, this::tick, 5, 5);
         Bukkit.getScheduler().runTaskTimer(this, this::save, 1200, 1200);
     }
     @Override public void onDisable() { save(); }
@@ -81,7 +82,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     void sit(Fox fox, Pet pet, boolean value) {
         pet.stay = value;
         pet.seat = value ? fox.getLocation().clone() : null;
-        pet.previous = null; pet.stuck = 0; pet.repath = 0;
+        pet.previous = null; pet.lastGoal = null; pet.stuck = 0; pet.repath = 0;
         fox.getPathfinder().stopPathfinding();
         fox.setSitting(value);
         fox.setAI(!value);
@@ -105,7 +106,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         tell(p, "&aYour snow fox is here!");
     }
     void tick() {
-        ticks += 10;
+        ticks += 5;
         dropped.entrySet().removeIf(e -> ticks >= e.getValue().expires());
         eatingUntil.entrySet().removeIf(e -> { if (ticks < e.getValue()) return false; Entity entity = Bukkit.getEntity(e.getKey()); if (entity instanceof Fox fox) setEating(fox, false); return true; });
         for (Pet pet : pets.values()) {
@@ -115,36 +116,50 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             Player owner = Bukkit.getPlayer(pet.owner);
             pet.last = fox.getLocation().clone();
             if (owner == null || pet.stay) {
+                // Disable fox wandering/targeting goals while seated or owner is offline.
                 fox.getPathfinder().stopPathfinding();
+                if (fox.hasAI()) fox.setAI(false);
                 fox.setSitting(true);
-                fox.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
-                Location seat = pet.stay ? pet.seat : pet.last;
-                if (pet.stay && seat != null && seat.getWorld() == fox.getWorld() && seat.distanceSquared(fox.getLocation()) > 0.09) {
-                    fox.teleport(seat);
+                if (pet.stay && pet.seat != null && pet.seat.getWorld() == fox.getWorld()
+                        && pet.seat.distanceSquared(fox.getLocation()) > 0.25) {
+                    fox.teleport(pet.seat);
                 }
+                pet.lastGoal = null;
+                pet.previous = null;
+                pet.stuck = 0;
             } else {
+                if (!fox.hasAI()) fox.setAI(true);
                 fox.setSitting(false);
                 if (owner.getWorld() != fox.getWorld()) {
-                    fox.teleport(owner.getLocation()); pet.repath = 0;
+                    fox.teleport(owner.getLocation());
+                    pet.repath = 0; pet.stuck = 0; pet.previous = null; pet.lastGoal = null;
                 } else {
                     double distance = fox.getLocation().distanceSquared(owner.getLocation());
-                    if (distance > 22 * 22) {
-                        fox.teleport(owner.getLocation()); pet.stuck = 0; pet.repath = 0;
-                    } else if (distance < 2.5 * 2.5) {
-                        fox.getPathfinder().stopPathfinding(); pet.stuck = 0; pet.repath = 0;
-                    } else if (distance > 4 * 4) {
-                        if (pet.repath-- <= 0 || !fox.getPathfinder().hasPath()) {
-                            fox.getPathfinder().moveTo(owner, 1.2);
-                            pet.repath = 6;
+                    if (distance > 24 * 24) {
+                        fox.teleport(owner.getLocation());
+                        pet.repath = 0; pet.stuck = 0; pet.previous = null; pet.lastGoal = null;
+                    } else if (distance <= 3 * 3) {
+                        fox.getPathfinder().stopPathfinding();
+                        pet.stuck = 0; pet.repath = 0; pet.lastGoal = null;
+                    } else {
+                        // Repath toward a moving owner rather than repeatedly chasing a stale point.
+                        Location goal = owner.getLocation();
+                        boolean moved = pet.lastGoal == null || pet.lastGoal.getWorld() != goal.getWorld()
+                                || pet.lastGoal.distanceSquared(goal) > 2.25;
+                        if (moved || pet.repath-- <= 0 || !fox.getPathfinder().hasPath()) {
+                            fox.getPathfinder().moveTo(owner, 1.15);
+                            pet.lastGoal = goal.clone();
+                            pet.repath = 8;
                         }
                         if (ticks % 40 == 0) {
-                            if (pet.previous != null && pet.previous.getWorld() == fox.getWorld() && pet.previous.distanceSquared(fox.getLocation()) < 0.25 && distance > 36) {
-                                pet.stuck++;
-                                fox.getPathfinder().moveTo(owner, 1.2);
-                            } else pet.stuck = 0;
+                            if (pet.previous != null && pet.previous.getWorld() == fox.getWorld()
+                                    && pet.previous.distanceSquared(fox.getLocation()) < 0.16
+                                    && distance > 6 * 6) pet.stuck++;
+                            else pet.stuck = 0;
                             pet.previous = fox.getLocation().clone();
-                            if (pet.stuck >= 5) {
-                                fox.teleport(owner.getLocation()); pet.stuck = 0; pet.repath = 0;
+                            if (pet.stuck >= 4) {
+                                fox.teleport(owner.getLocation());
+                                pet.stuck = 0; pet.repath = 0; pet.previous = null; pet.lastGoal = null;
                             }
                         }
                     }
