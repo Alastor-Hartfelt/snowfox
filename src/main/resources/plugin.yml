@@ -1,0 +1,17 @@
+name: SnowFox
+version: 1.0.0
+main: com.snowfox.SnowFoxPlugin
+api-version: '1.21.11'
+description: Persistent baby snow fox pets with wolf-like following.
+commands:
+  snowfox:
+    description: Summon and control your snow fox
+  snowfoxrename: {}
+  snowfoxstay: {}
+  snowfoxadopt: {}
+  snowfoxfix: {}
+  snowfoxtrust: {}
+  snowfoxreset: {}
+permissions:
+  snowfox.use:
+    default: false
