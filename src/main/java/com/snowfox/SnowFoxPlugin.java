@@ -163,7 +163,14 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             ItemStack incoming = item.getItemStack().clone();
             ItemStack old = fox.getEquipment().getItemInMainHand().clone();
             fox.getEquipment().setItemInMainHand(incoming);
-            if (pets.get(pending.owner()).stay && isChicken(incoming)) eatChicken(fox, pets.get(pending.owner()));
+            if (pets.get(pending.owner()).stay && isChicken(incoming)) {
+                eatChicken(fox, pets.get(pending.owner()));
+                UUID foxId = fox.getUniqueId();
+                Bukkit.getScheduler().runTaskLater(this, () -> {
+                    Entity current = Bukkit.getEntity(foxId);
+                    if (current instanceof Fox live && isChicken(live.getEquipment().getItemInMainHand())) live.getEquipment().setItemInMainHand(null);
+                }, 30L);
+            }
             item.remove();
             dropped.remove(id);
             if (!old.getType().isAir()) {
