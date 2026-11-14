@@ -119,7 +119,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         fox.setAgeLock(!pet.aging);
         fox.setFoxType(pet.variant);
         fox.setCustomName(pet.name);
-        fox.setCustomNameVisible(true);
+        fox.setCustomNameVisible(false);
         installWolfGoals(fox, pet);
         fox.setAI(true);
         fox.setGravity(true);
