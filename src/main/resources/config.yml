@@ -13,7 +13,7 @@ effects:
 
 combat:
   attacks: true
-  attack-style: jump # jump or wolf
+  attack-style: fox # fox (vanilla hunting AI) or wolf
 
 fox:
   allow-natural-aging: false
