@@ -47,7 +47,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     boolean snowflakeParticlesEnabled = true;
     boolean wolfStyleCombatEnabled = false;
     int particleAmount = 1;
-    boolean defaultAdult = false;
+    boolean defaultAging = false;
     void loadSettings() {
         reloadConfig();
         followStop = bounded("following.stop-distance", 2.0, 0.5, 12.0);
@@ -60,7 +60,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         snowflakeParticlesEnabled = getConfig().getBoolean("effects.allow-snowflake-particles", true);
         wolfStyleCombatEnabled = getConfig().getBoolean("combat.wolf-style-attacks", false);
         particleAmount = Math.max(0, Math.min(100, getConfig().getInt("effects.snowflake-particle-amount", 1)));
-        defaultAdult = getConfig().getBoolean("fox.default-adult", false);
+        defaultAging = getConfig().getBoolean("fox.allow-natural-aging", false);
     }
     double bounded(String key, double fallback, double min, double max) {
         double value = getConfig().getDouble(key, fallback);
@@ -114,8 +114,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         fox.setPersistent(true);
         fox.setRemoveWhenFarAway(false);
         fox.setCanPickupItems(true);
-        fox.setAge(pet.adult ? 0 : -24000);
-        fox.setAgeLock(true);
+        fox.setAgeLock(!pet.aging);
         fox.setFoxType(pet.variant);
         fox.setCustomName(pet.name);
         fox.setCustomNameVisible(true);
@@ -239,7 +238,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     void summon(Player p, Fox.Type variant) {
         Pet pet = pets.computeIfAbsent(p.getUniqueId(), Pet::new);
         Fox fox = find(pet, true);
-        if (pet.fox == null) { pet.variant = variant; pet.adult = defaultAdult; }
+        if (pet.fox == null) { pet.variant = variant; pet.aging = defaultAging; }
         if (pet.fox != null && fox == null) {
             tell(p, "&cRegistered fox missing. Use /snowfoxreset only if it was deleted."); return;
         }
