@@ -12,7 +12,8 @@ effects:
   snowflake-particle-amount: 1
 
 combat:
-  wolf-style-attacks: true
+  attacks: true
+  attack-style: jump # jump or wolf
 
 fox:
   allow-natural-aging: false
