@@ -121,6 +121,8 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
         private final net.minecraft.world.entity.animal.fox.Fox fox;
         private final Pet pet;
         private int cooldown, windup;
+        private double highestY;
+        private boolean hasDescended;
         private boolean diving;
         private boolean airborne;
         private boolean struckThisPounce;
@@ -151,6 +153,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
             airborne = false;
             struckThisPounce = false;
             flightTicks = 0;
+            hasDescended = false;
         }
         @Override public void tick() {
             LivingEntity target = selectedTarget();
@@ -165,7 +168,9 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
                 flightTicks++;
                 fox.getNavigation().stop();
                 org.bukkit.util.Vector motion = bukkitFox.getVelocity();
+                highestY = Math.max(highestY, bukkitFox.getLocation().getY());
                 if (!diving && (motion.getY() <= 0.05 || flightTicks >= 18)) diving = true;
+                if (diving && motion.getY() < -0.08) hasDescended = true;
                 if (diving) {
                     org.bukkit.util.Vector toTarget = target.getLocation().toVector()
                             .subtract(bukkitFox.getLocation().toVector());
@@ -175,7 +180,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
                             Math.max(-1.25, motion.getY() - 0.22), horizontal.getZ()));
                 }
                 // Apply damage on the actual descending collision, once per leap.
-                if (diving && !struckThisPounce
+                if (diving && hasDescended && !struckThisPounce
                         && bukkitFox.getBoundingBox().expand(0.65, 0.65, 0.65)
                                 .overlaps(target.getBoundingBox())) {
                     // Native mob attack uses the fox's held main-hand item and enchantments.
@@ -183,6 +188,15 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
                             ((org.bukkit.craftbukkit.entity.CraftEntity) target).getHandle();
                     if (fox.doHurtTarget((net.minecraft.server.level.ServerLevel) fox.level(), victim)) {
                         struckThisPounce = true;
+                        // Vanilla mace smash/Wind Burst logic is player-specific. Reproduce
+                        // the Wind Burst launch for a fox holding an enchanted mace.
+                        ItemStack held = bukkitFox.getEquipment().getItemInMainHand();
+                        int windBurst = held.getType() == Material.MACE
+                                ? held.getEnchantmentLevel(org.bukkit.enchantments.Enchantment.WIND_BURST) : 0;
+                        if (windBurst > 0 && highestY - target.getLocation().getY() >= 1.5) {
+                            org.bukkit.util.Vector v = bukkitFox.getVelocity();
+                            bukkitFox.setVelocity(v.setY(0.9 + 0.35 * windBurst));
+                        }
                     }
                 }
                 if (fox.onGround() && flightTicks > 3) {
@@ -190,20 +204,22 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
                     diving = false;
                     flightTicks = 0;
                 }
-            } else if (distance > 2.25 && distance < 100 && fox.onGround() && cooldown == 0) {
+            } else if (distance > 0.8 && distance < 100 && fox.onGround() && cooldown == 0) {
                 fox.getNavigation().stop();
                 // Avoid the prolonged crouch that looks like shaking.
                 if (++windup >= 3) {
                     org.bukkit.util.Vector toTarget = target.getLocation().toVector()
                             .subtract(bukkitFox.getLocation().toVector()).setY(0);
                     if (toTarget.lengthSquared() > 0.01) {
-                        org.bukkit.util.Vector launch = toTarget.normalize().multiply(0.42).setY(0.92);
+                        org.bukkit.util.Vector launch = toTarget.normalize().multiply(Math.min(0.55, Math.max(0.16, Math.sqrt(distance) * 0.12))).setY(0.92);
                         bukkitFox.setVelocity(launch);
                         airborne = true;
                         struckThisPounce = false;
                         diving = false;
                         flightTicks = 0;
-                        cooldown = 22;
+                        highestY = bukkitFox.getLocation().getY();
+                        hasDescended = false;
+                        cooldown = 12;
                     }
                     windup = 0;
                 }
