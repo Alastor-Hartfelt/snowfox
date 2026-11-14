@@ -9,6 +9,10 @@ following:
 
 effects:
   allow-snowflake-particles: true
+  snowflake-particle-amount: 1
 
 combat:
   wolf-style-attacks: false
+
+fox:
+  default-adult: false
