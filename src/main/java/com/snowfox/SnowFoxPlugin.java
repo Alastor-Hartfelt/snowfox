@@ -40,6 +40,28 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     final Map<UUID, UUID> owners = new HashMap<>();
     final Map<UUID, Pending> dropped = new HashMap<>();
     File file;
+    double followStart = 4.0, followStop = 2.0, followSpeed = 1.15, teleportDistance = 24.0;
+    int followRepathTicks = 10, stuckCheckTicks = 40, stuckChecksBeforeTeleport = 4;
+    boolean snowflakeParticlesEnabled = true;
+    void loadSettings() {
+        reloadConfig();
+        followStop = bounded("following.stop-distance", 2.0, 0.5, 12.0);
+        followStart = bounded("following.start-distance", 4.0, followStop + 0.5, 24.0);
+        followSpeed = bounded("following.speed", 1.15, 0.1, 3.0);
+        teleportDistance = bounded("following.teleport-distance", 24.0, followStart + 1.0, 128.0);
+        followRepathTicks = (int) bounded("following.repath-ticks", 10, 1, 100);
+        stuckCheckTicks = (int) bounded("following.stuck-check-ticks", 40, 5, 200);
+        stuckChecksBeforeTeleport = (int) bounded("following.stuck-checks-before-teleport", 4, 1, 20);
+        snowflakeParticlesEnabled = getConfig().getBoolean("effects.allow-snowflake-particles", true);
+    }
+    double bounded(String key, double fallback, double min, double max) {
+        double value = getConfig().getDouble(key, fallback);
+        if (!Double.isFinite(value) || value < min || value > max) {
+            getLogger().warning("Invalid config value for " + key + "; using " + fallback);
+            return fallback;
+        }
+        return value;
+    }
     long ticks;
     NamespacedKey petKey;
     final Map<UUID, Long> eatingUntil = new HashMap<>();
@@ -49,6 +71,8 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         getDataFolder().mkdirs();
         petKey = new NamespacedKey(this, "owner");
         file = new File(getDataFolder(), "pets.yml");
+        saveDefaultConfig();
+        loadSettings();
         load();
         Bukkit.getPluginManager().registerEvents(this, this);
         for (String name : List.of("snowfox","snowfoxrename","snowfoxstay","snowfoxadopt","snowfoxfix","snowfoxtrust","snowfoxreset")) {
@@ -137,12 +161,12 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         @Override public boolean canUse() {
             Player p = owner();
             return !pet.stay && fox.getTarget() == null && p != null && p.getWorld().getUID().equals(fox.getBukkitEntity().getWorld().getUID())
-                    && fox.distanceToSqr(((CraftPlayer) p).getHandle()) > 16.0;
+                    && fox.distanceToSqr(((CraftPlayer) p).getHandle()) > followStart * followStart;
         }
         @Override public boolean canContinueToUse() {
             Player p = owner();
             return !pet.stay && fox.getTarget() == null && p != null && p.getWorld().getUID().equals(fox.getBukkitEntity().getWorld().getUID())
-                    && fox.distanceToSqr(((CraftPlayer) p).getHandle()) > 4.0;
+                    && fox.distanceToSqr(((CraftPlayer) p).getHandle()) > followStop * followStop;
         }
         @Override public void start() { recalc = 0; }
         @Override public void stop() { if (fox.getTarget() == null) fox.getNavigation().stop(); }
@@ -153,8 +177,8 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             var target = ((CraftPlayer) p).getHandle();
             fox.getLookControl().setLookAt(target, 10.0f, fox.getMaxHeadXRot());
             if (--recalc <= 0) {
-                recalc = 10;
-                fox.getNavigation().moveTo(target, 1.15);
+                recalc = followRepathTicks;
+                fox.getNavigation().moveTo(target, followSpeed);
             }
         }
     }
@@ -237,24 +261,24 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             } else {
                 fox.setSitting(false);
                 if (owner.getWorld() != fox.getWorld()
-                        || fox.getLocation().distanceSquared(owner.getLocation()) > 24 * 24) {
+                        || fox.getLocation().distanceSquared(owner.getLocation()) > teleportDistance * teleportDistance) {
                     fox.teleport(owner.getLocation());
                     pet.stuck = 0;
                     pet.previous = null;
-                } else if (ticks % 40 == 0) {
+                } else if (ticks % (5L * Math.max(1, (stuckCheckTicks + 4) / 5)) == 0) {
                     double distance = fox.getLocation().distanceSquared(owner.getLocation());
-                    if (distance > 36 && pet.previous != null
+                    if (distance > followStart * followStart && pet.previous != null
                             && pet.previous.getWorld() == fox.getWorld()
                             && pet.previous.distanceSquared(fox.getLocation()) < 0.16) pet.stuck++;
                     else pet.stuck = 0;
                     pet.previous = fox.getLocation().clone();
-                    if (pet.stuck >= 4) {
+                    if (pet.stuck >= stuckChecksBeforeTeleport) {
                         fox.teleport(owner.getLocation());
                         pet.stuck = 0;
                     }
                 }
             }
-            if (pet.particles && ticks % 20 == 0) fox.getWorld().spawnParticle(Particle.SNOWFLAKE, fox.getLocation().add(0, 0.5, 0), 1, .15, .15, .15, .005);
+            if (snowflakeParticlesEnabled && pet.particles && ticks % 20 == 0) fox.getWorld().spawnParticle(Particle.SNOWFLAKE, fox.getLocation().add(0, 0.5, 0), 1, .15, .15, .15, .005);
         }
         for (UUID id : new ArrayList<>(dropped.keySet())) {
             Pending pending = dropped.get(id);
@@ -364,6 +388,15 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         }
     }
     @Override public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (command.getName().equalsIgnoreCase("snowfox") && args.length > 0 && args[0].equalsIgnoreCase("reload")) {
+            if (!sender.hasPermission("snowfox.admin")) {
+                sender.sendMessage(ChatColor.RED + "You need snowfox.admin permission.");
+                return true;
+            }
+            loadSettings();
+            sender.sendMessage(ChatColor.AQUA + "SnowFox config.yml reloaded. Existing pets and preferences were preserved.");
+            return true;
+        }
         if (!(sender instanceof Player p)) { sender.sendMessage("Players only."); return true; }
         if (!allowed(p)) { tell(p, "&cYou need snowfox.use permission."); return true; }
         String cmd = command.getName().toLowerCase(Locale.ROOT);
@@ -452,13 +485,13 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 owners.remove(pet.fox); pet.fox = null; pet.stay = false; pet.seat = null;
                 save(); tell(p, "&aRegistration reset; name and particles preserved.");
             }
-            default -> tell(p, "&f/snowfox summon, tp, stay, messages, rename <name>, particles, fix, trust, adopt, reset");
+            default -> tell(p, "&f/snowfox summon, tp, stay, messages, rename <name>, particles, fix, trust, adopt, reset, reload");
         }
         return true;
     }
     @Override public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (command.getName().equalsIgnoreCase("snowfox") && args.length == 1)
-            return List.of("summon","tp","stay","messages","rename","particles","fix","trust","adopt","reset").stream().filter(s -> s.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
+            return (sender.hasPermission("snowfox.admin") ? List.of("summon","tp","stay","messages","rename","particles","fix","trust","adopt","reset","reload") : List.of("summon","tp","stay","messages","rename","particles","fix","trust","adopt","reset")).stream().filter(s -> s.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
         if (command.getName().equalsIgnoreCase("snowfox") && args.length == 2 && args[0].equalsIgnoreCase("messages"))
             return List.of("movement", "items", "all").stream().filter(s -> s.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
         if (command.getName().equalsIgnoreCase("snowfox") && args.length == 3 && args[0].equalsIgnoreCase("messages"))
