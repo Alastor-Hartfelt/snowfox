@@ -16,6 +16,10 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.BoundingBox;
 import java.io.*;
 import java.util.*;
+import org.bukkit.craftbukkit.entity.CraftFox;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
+import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.entity.ai.goal.FloatGoal;
 
 public final class SnowFoxPlugin extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
     static final UUID ORIGINAL = UUID.fromString("3c2db120-d8f9-3718-bdc3-45e02d25bb6b");
@@ -37,6 +41,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     long ticks;
     NamespacedKey petKey;
     final Map<UUID, Long> eatingUntil = new HashMap<>();
+    final Set<UUID> wolfGoalsInstalled = new HashSet<>();
 
     @Override public void onEnable() {
         getDataFolder().mkdirs();
@@ -75,10 +80,54 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         fox.setCustomName(pet.name);
         fox.setCustomNameVisible(true);
         fox.setTarget(null);
+        installWolfGoals(fox, pet);
         fox.setAI(!pet.stay && Bukkit.getPlayer(pet.owner) != null);
         Player p = Bukkit.getPlayer(pet.owner);
         if (p != null) fox.setFirstTrustedPlayer(p);
     }
+    // Paper 1.21.11 NMS: replace fox wandering/hunting goals with wolf-style owner navigation.
+    void installWolfGoals(Fox fox, Pet pet) {
+        if (!wolfGoalsInstalled.add(fox.getUniqueId())) return;
+        net.minecraft.world.entity.animal.Fox handle = ((CraftFox) fox).getHandle();
+        handle.goalSelector.removeAllGoals(goal -> true);
+        handle.goalSelector.addGoal(0, new FloatGoal(handle));
+        handle.goalSelector.addGoal(2, new FoxFollowOwnerGoal(handle, pet));
+    }
+
+    final class FoxFollowOwnerGoal extends Goal {
+        private final net.minecraft.world.entity.animal.Fox fox;
+        private final Pet pet;
+        private int recalc;
+        FoxFollowOwnerGoal(net.minecraft.world.entity.animal.Fox fox, Pet pet) {
+            this.fox = fox;
+            this.pet = pet;
+            setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
+        }
+        private Player owner() { return Bukkit.getPlayer(pet.owner); }
+        @Override public boolean canUse() {
+            Player p = owner();
+            return !pet.stay && p != null && p.getWorld().getUID().equals(fox.getBukkitEntity().getWorld().getUID())
+                    && fox.distanceToSqr(((CraftPlayer) p).getHandle()) > 9.0;
+        }
+        @Override public boolean canContinueToUse() {
+            Player p = owner();
+            return !pet.stay && p != null && p.getWorld().getUID().equals(fox.getBukkitEntity().getWorld().getUID())
+                    && fox.distanceToSqr(((CraftPlayer) p).getHandle()) > 4.0;
+        }
+        @Override public void start() { recalc = 0; }
+        @Override public void stop() { fox.getNavigation().stop(); }
+        @Override public void tick() {
+            Player p = owner();
+            if (p == null) return;
+            var target = ((CraftPlayer) p).getHandle();
+            fox.getLookControl().setLookAt(target, 10.0f, fox.getMaxHeadXRot());
+            if (--recalc <= 0) {
+                recalc = 10;
+                fox.getNavigation().moveTo(target, 1.15);
+            }
+        }
+    }
+
     void sit(Fox fox, Pet pet, boolean value) {
         pet.stay = value;
         pet.seat = value ? fox.getLocation().clone() : null;
@@ -116,52 +165,27 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             Player owner = Bukkit.getPlayer(pet.owner);
             pet.last = fox.getLocation().clone();
             if (owner == null || pet.stay) {
-                // Disable fox wandering/targeting goals while seated or owner is offline.
                 fox.getPathfinder().stopPathfinding();
-                if (fox.hasAI()) fox.setAI(false);
                 fox.setSitting(true);
                 if (pet.stay && pet.seat != null && pet.seat.getWorld() == fox.getWorld()
-                        && pet.seat.distanceSquared(fox.getLocation()) > 0.25) {
-                    fox.teleport(pet.seat);
-                }
-                pet.lastGoal = null;
-                pet.previous = null;
-                pet.stuck = 0;
+                        && pet.seat.distanceSquared(fox.getLocation()) > 0.25) fox.teleport(pet.seat);
             } else {
-                if (!fox.hasAI()) fox.setAI(true);
                 fox.setSitting(false);
-                if (owner.getWorld() != fox.getWorld()) {
+                if (owner.getWorld() != fox.getWorld()
+                        || fox.getLocation().distanceSquared(owner.getLocation()) > 24 * 24) {
                     fox.teleport(owner.getLocation());
-                    pet.repath = 0; pet.stuck = 0; pet.previous = null; pet.lastGoal = null;
-                } else {
+                    pet.stuck = 0;
+                    pet.previous = null;
+                } else if (ticks % 40 == 0) {
                     double distance = fox.getLocation().distanceSquared(owner.getLocation());
-                    if (distance > 24 * 24) {
+                    if (distance > 36 && pet.previous != null
+                            && pet.previous.getWorld() == fox.getWorld()
+                            && pet.previous.distanceSquared(fox.getLocation()) < 0.16) pet.stuck++;
+                    else pet.stuck = 0;
+                    pet.previous = fox.getLocation().clone();
+                    if (pet.stuck >= 4) {
                         fox.teleport(owner.getLocation());
-                        pet.repath = 0; pet.stuck = 0; pet.previous = null; pet.lastGoal = null;
-                    } else if (distance <= 3 * 3) {
-                        fox.getPathfinder().stopPathfinding();
-                        pet.stuck = 0; pet.repath = 0; pet.lastGoal = null;
-                    } else {
-                        // Repath toward a moving owner rather than repeatedly chasing a stale point.
-                        Location goal = owner.getLocation();
-                        boolean moved = pet.lastGoal == null || pet.lastGoal.getWorld() != goal.getWorld()
-                                || pet.lastGoal.distanceSquared(goal) > 2.25;
-                        if (moved || pet.repath-- <= 0 || !fox.getPathfinder().hasPath()) {
-                            fox.getPathfinder().moveTo(owner, 1.15);
-                            pet.lastGoal = goal.clone();
-                            pet.repath = 8;
-                        }
-                        if (ticks % 40 == 0) {
-                            if (pet.previous != null && pet.previous.getWorld() == fox.getWorld()
-                                    && pet.previous.distanceSquared(fox.getLocation()) < 0.16
-                                    && distance > 6 * 6) pet.stuck++;
-                            else pet.stuck = 0;
-                            pet.previous = fox.getLocation().clone();
-                            if (pet.stuck >= 4) {
-                                fox.teleport(owner.getLocation());
-                                pet.stuck = 0; pet.repath = 0; pet.previous = null; pet.lastGoal = null;
-                            }
-                        }
+                        pet.stuck = 0;
                     }
                 }
             }
