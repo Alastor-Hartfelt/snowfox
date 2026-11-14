@@ -120,7 +120,10 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
     final class FoxPounceGoal extends Goal {
         private final net.minecraft.world.entity.animal.fox.Fox fox;
         private final Pet pet;
-        private int crouchTicks, cooldown, hitCooldown;
+        private int cooldown, hitCooldown, windup;
+        private boolean diving;
+        private boolean airborne;
+        private int flightTicks;
         FoxPounceGoal(net.minecraft.world.entity.animal.fox.Fox fox, Pet pet) {
             this.fox = fox;
             this.pet = pet;
@@ -141,7 +144,10 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
         @Override public void stop() {
             ((Fox) fox.getBukkitEntity()).setCrouching(false);
             fox.getNavigation().stop();
-            crouchTicks = 0;
+            windup = 0;
+            diving = false;
+            airborne = false;
+            flightTicks = 0;
         }
         @Override public void tick() {
             LivingEntity target = selectedTarget();
@@ -151,22 +157,46 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
             fox.getLookControl().setLookAt(target.getLocation().getX(), target.getEyeLocation().getY(), target.getLocation().getZ());
             if (cooldown > 0) cooldown--;
             if (hitCooldown > 0) hitCooldown--;
-            if (distance > 4 && distance < 64 && fox.onGround() && cooldown == 0) {
+            // Separate the windup, rising arc, and downward strike so navigation
+            // cannot interrupt the jump or cause repeated crouch animations.
+            if (airborne) {
+                flightTicks++;
                 fox.getNavigation().stop();
-                bukkitFox.setCrouching(true);
-                if (++crouchTicks >= 16) {
-                    bukkitFox.setCrouching(false);
-                    org.bukkit.util.Vector vector = target.getLocation().toVector().subtract(bukkitFox.getLocation().toVector());
-                    if (vector.lengthSquared() > 0.01) {
-                        bukkitFox.setVelocity(vector.normalize().multiply(0.85).setY(0.48));
+                org.bukkit.util.Vector motion = bukkitFox.getVelocity();
+                if (!diving && (motion.getY() <= 0.05 || flightTicks >= 18)) diving = true;
+                if (diving) {
+                    org.bukkit.util.Vector toTarget = target.getLocation().toVector()
+                            .subtract(bukkitFox.getLocation().toVector());
+                    org.bukkit.util.Vector horizontal = toTarget.clone().setY(0);
+                    if (horizontal.lengthSquared() > 0.01) horizontal.normalize().multiply(0.45);
+                    bukkitFox.setVelocity(new org.bukkit.util.Vector(horizontal.getX(),
+                            Math.max(-1.25, motion.getY() - 0.22), horizontal.getZ()));
+                }
+                if (fox.onGround() && flightTicks > 3) {
+                    airborne = false;
+                    diving = false;
+                    flightTicks = 0;
+                }
+            } else if (distance > 4 && distance < 64 && fox.onGround() && cooldown == 0) {
+                fox.getNavigation().stop();
+                // Avoid the prolonged crouch that looks like shaking.
+                if (++windup >= 3) {
+                    org.bukkit.util.Vector toTarget = target.getLocation().toVector()
+                            .subtract(bukkitFox.getLocation().toVector()).setY(0);
+                    if (toTarget.lengthSquared() > 0.01) {
+                        org.bukkit.util.Vector launch = toTarget.normalize().multiply(0.42).setY(0.92);
+                        bukkitFox.setVelocity(launch);
+                        airborne = true;
+                        diving = false;
+                        flightTicks = 0;
+                        cooldown = 45;
                     }
-                    crouchTicks = 0;
-                    cooldown = 35;
+                    windup = 0;
                 }
             } else {
-                bukkitFox.setCrouching(false);
-                crouchTicks = 0;
-                fox.getNavigation().moveTo(target.getLocation().getX(), target.getLocation().getY(), target.getLocation().getZ(), 1.3);
+                windup = 0;
+                fox.getNavigation().moveTo(target.getLocation().getX(),
+                        target.getLocation().getY(), target.getLocation().getZ(), 1.3);
             }
             if (distance < 3 && hitCooldown == 0) {
                 target.damage(2.0, bukkitFox);
