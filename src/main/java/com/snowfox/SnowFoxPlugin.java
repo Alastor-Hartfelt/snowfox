@@ -88,17 +88,17 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     // Paper 1.21.11 NMS: replace fox wandering/hunting goals with wolf-style owner navigation.
     void installWolfGoals(Fox fox, Pet pet) {
         if (!wolfGoalsInstalled.add(fox.getUniqueId())) return;
-        net.minecraft.world.entity.animal.Fox handle = ((CraftFox) fox).getHandle();
+        net.minecraft.world.entity.animal.fox.Fox handle = ((CraftFox) fox).getHandle();
         handle.goalSelector.removeAllGoals(goal -> true);
         handle.goalSelector.addGoal(0, new FloatGoal(handle));
         handle.goalSelector.addGoal(2, new FoxFollowOwnerGoal(handle, pet));
     }
 
     final class FoxFollowOwnerGoal extends Goal {
-        private final net.minecraft.world.entity.animal.Fox fox;
+        private final net.minecraft.world.entity.animal.fox.Fox fox;
         private final Pet pet;
         private int recalc;
-        FoxFollowOwnerGoal(net.minecraft.world.entity.animal.Fox fox, Pet pet) {
+        FoxFollowOwnerGoal(net.minecraft.world.entity.animal.fox.Fox fox, Pet pet) {
             this.fox = fox;
             this.pet = pet;
             setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
