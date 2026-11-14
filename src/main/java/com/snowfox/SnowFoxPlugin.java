@@ -33,6 +33,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         boolean stay, particles;
         boolean movementMessages = true, itemMessages = true;
         boolean aging = false;
+        boolean combat = true;
         Fox.Type variant = Fox.Type.SNOW;
         Location last, seat, previous;
         int stuck, repath;
@@ -76,6 +77,8 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     NamespacedKey petKey;
     final Map<UUID, Long> eatingUntil = new HashMap<>();
     final Map<UUID, net.minecraft.world.entity.animal.fox.Fox> wolfGoalsInstalled = new HashMap<>();
+    final Map<UUID, UUID> combatTargets = new HashMap<>();
+    final Map<UUID, Long> combatExpires = new HashMap<>();
 
     @Override public void onEnable() {
         getDataFolder().mkdirs();
@@ -138,6 +141,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             }
         }
         handle.goalSelector.addGoal(0, new FoxStayGoal(handle, pet));
+        handle.goalSelector.addGoal(2, new FoxOwnerCombatGoal(handle, pet));
         handle.goalSelector.addGoal(4, new FoxFollowOwnerGoal(handle, pet));
         handle.goalSelector.addGoal(7, new LookAtPlayerGoal(handle, net.minecraft.world.entity.LivingEntity.class, 8.0F));
         handle.goalSelector.addGoal(8, new RandomLookAroundGoal(handle));
@@ -229,6 +233,44 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         }
     }
 
+    final class FoxOwnerCombatGoal extends Goal {
+        private final net.minecraft.world.entity.animal.fox.Fox fox;
+        private final Pet pet;
+        private int cooldown;
+        FoxOwnerCombatGoal(net.minecraft.world.entity.animal.fox.Fox fox, Pet pet) {
+            this.fox = fox;
+            this.pet = pet;
+            setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK, Goal.Flag.JUMP));
+        }
+        private LivingEntity target() {
+            if (!wolfStyleCombatEnabled || !pet.combat || pet.stay) return null;
+            UUID id = combatTargets.get(fox.getUUID());
+            if (id == null || ticks >= combatExpires.getOrDefault(fox.getUUID(), 0L)) return null;
+            Entity entity = Bukkit.getEntity(id);
+            if (!(entity instanceof LivingEntity victim) || victim instanceof Player || victim instanceof Fox
+                    || !victim.isValid() || victim.isDead()
+                    || victim.getWorld() != fox.getBukkitEntity().getWorld()
+                    || victim.getLocation().distanceSquared(fox.getBukkitEntity().getLocation()) > 256) return null;
+            return victim;
+        }
+        @Override public boolean canUse() { return target() != null; }
+        @Override public boolean canContinueToUse() { return target() != null; }
+        @Override public void stop() { fox.getNavigation().stop(); }
+        @Override public void tick() {
+            LivingEntity victim = target();
+            if (victim == null) return;
+            fox.getLookControl().setLookAt(victim.getLocation().getX(), victim.getEyeLocation().getY(), victim.getLocation().getZ());
+            fox.getNavigation().moveTo(victim.getLocation().getX(), victim.getLocation().getY(), victim.getLocation().getZ(), 1.3);
+            if (cooldown > 0) cooldown--;
+            double distance = victim.getLocation().distanceSquared(fox.getBukkitEntity().getLocation());
+            if (distance < 16 && fox.onGround()) fox.getJumpControl().jump();
+            if (distance < 3.0 && cooldown == 0) {
+                victim.damage(2.0, (Fox) fox.getBukkitEntity());
+                cooldown = 20;
+            }
+        }
+    }
+
     void sit(Fox fox, Pet pet, boolean value) {
         pet.stay = value;
         pet.seat = value ? fox.getLocation().clone() : null;
@@ -269,6 +311,8 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         if (held != null && !held.getType().isAir()) fox.getWorld().dropItemNaturally(fox.getLocation(), held.clone());
         fox.remove();
         wolfGoalsInstalled.remove(id);
+        combatTargets.remove(id);
+        combatExpires.remove(id);
         eatingUntil.remove(id);
         owners.remove(id);
         pet.fox = null;
@@ -392,10 +436,12 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     void directFoxAttack(Player owner, LivingEntity target) {
         if (target instanceof Player || target instanceof Fox || !target.isValid() || target.isDead()) return;
         Pet pet = pets.get(owner.getUniqueId());
-        if (pet == null || pet.stay) return;
+        if (pet == null || pet.stay || !pet.combat) return;
         Fox fox = find(pet, false);
         if (fox == null || fox.getWorld() != target.getWorld()
                 || fox.getLocation().distanceSquared(target.getLocation()) > 16 * 16) return;
+        combatTargets.put(fox.getUniqueId(), target.getUniqueId());
+        combatExpires.put(fox.getUniqueId(), ticks + 200);
         fox.setTarget(target);
     }
     @EventHandler public void onInteract(PlayerInteractEntityEvent e) {
@@ -599,6 +645,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 if (fox != null) pet.fox = UUID.fromString(fox);
                 pet.name = y.getString("pets." + key + ".name", "Snowy");
                 pet.aging = y.getBoolean("pets." + key + ".aging", false);
+                pet.combat = y.getBoolean("pets." + key + ".combat", true);
                 try { pet.variant = Fox.Type.valueOf(y.getString("pets." + key + ".variant", "SNOW").toUpperCase(Locale.ROOT)); }
                 catch (IllegalArgumentException ignored) { pet.variant = Fox.Type.SNOW; }
                 pet.stay = y.getBoolean("pets." + key + ".stay");
@@ -619,6 +666,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             y.set(path + ".fox", pet.fox == null ? null : pet.fox.toString());
             y.set(path + ".name", pet.name);
             y.set(path + ".aging", pet.aging);
+            y.set(path + ".combat", pet.combat);
             y.set(path + ".variant", pet.variant.name());
             y.set(path + ".stay", pet.stay);
             y.set(path + ".particles", pet.particles);
