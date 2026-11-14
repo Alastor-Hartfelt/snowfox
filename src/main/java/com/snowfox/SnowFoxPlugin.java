@@ -33,7 +33,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
     boolean snowflakeParticlesEnabled = true;
     boolean wolfStyleCombatEnabled = false;
     int particleAmount = 1;
-    boolean defaultAdult = false;
+    boolean defaultAging = false;
     final SnowFoxSettings settings = new SnowFoxSettings(this);
     final PetStorage storage = new PetStorage(this);
     final SnowFoxCommands commands = new SnowFoxCommands(this);
@@ -84,8 +84,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
         fox.setPersistent(true);
         fox.setRemoveWhenFarAway(false);
         fox.setCanPickupItems(true);
-        fox.setAge(pet.adult ? 0 : -24000);
-        fox.setAgeLock(true);
+        fox.setAgeLock(!pet.aging);
         fox.setFoxType(pet.variant);
         fox.setCustomName(pet.name);
         fox.setCustomNameVisible(true);
@@ -123,7 +122,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
     void summon(Player p, Fox.Type variant) {
         Pet pet = pets.computeIfAbsent(p.getUniqueId(), Pet::new);
         Fox fox = find(pet, true);
-        if (pet.fox == null) { pet.variant = variant; pet.adult = defaultAdult; }
+        if (pet.fox == null) { pet.variant = variant; pet.aging = defaultAging; }
         if (pet.fox != null && fox == null) {
             tell(p, "&cRegistered fox missing. Use /snowfoxreset only if it was deleted."); return;
         }
