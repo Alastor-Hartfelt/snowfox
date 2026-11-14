@@ -34,6 +34,9 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
     int followRepathTicks = 10, stuckCheckTicks = 40, stuckChecksBeforeTeleport = 4;
     boolean snowflakeParticlesEnabled = true;
     boolean wolfStyleCombatEnabled = false;
+    String attackStyle = "wolf";
+    final Map<UUID, UUID> pounceTargets = new HashMap<>();
+    final Map<UUID, Long> pounceUntil = new HashMap<>();
     int particleAmount = 1;
     boolean defaultAging = false;
     final SnowFoxSettings settings = new SnowFoxSettings(this);
@@ -108,6 +111,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
             }
         }
         handle.goalSelector.addGoal(0, new FoxStayGoal(this, handle, pet));
+        handle.goalSelector.addGoal(2, new FoxPounceGoal(handle, pet));
         handle.goalSelector.addGoal(4, new FoxFollowOwnerGoal(this, handle, pet));
         handle.goalSelector.addGoal(7, new LookAtPlayerGoal(handle, net.minecraft.world.entity.LivingEntity.class, 8.0F));
         handle.goalSelector.addGoal(8, new RandomLookAroundGoal(handle));
@@ -280,7 +284,12 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
         Fox fox = find(pet, false);
         if (fox == null || fox.getWorld() != target.getWorld()
                 || fox.getLocation().distanceSquared(target.getLocation()) > 16 * 16) return;
-        fox.setTarget(target);
+        if ("fox".equals(attackStyle)) {
+            pounceTargets.put(fox.getUniqueId(), target.getUniqueId());
+            pounceUntil.put(fox.getUniqueId(), ticks + 200);
+        } else {
+            fox.setTarget(target);
+        }
     }
     @EventHandler public void onInteract(PlayerInteractEntityEvent e) {
         if (e.getHand() != EquipmentSlot.HAND) return;
