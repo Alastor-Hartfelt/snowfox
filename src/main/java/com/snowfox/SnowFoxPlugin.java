@@ -170,11 +170,22 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         }
         @Override public boolean canUse() {
             Player p = Bukkit.getPlayer(pet.owner);
-            return p != null && p.getWorld().getUID().equals(fox.getBukkitEntity().getWorld().getUID())
-                    && fox.distanceToSqr(((CraftPlayer) p).getHandle()) < 64.0;
+            if (p == null || !p.getWorld().getUID().equals(fox.getBukkitEntity().getWorld().getUID())
+                    || fox.distanceToSqr(((CraftPlayer) p).getHandle()) >= 64.0) return false;
+            // Never override prey-facing while hunting or preparing a pounce.
+            if (!pet.stay && (fox.getTarget() != null || preyNearby())) return false;
+            return true;
+        }
+        private boolean preyNearby() {
+            org.bukkit.entity.Entity bukkitFox = fox.getBukkitEntity();
+            for (org.bukkit.entity.Entity nearby : bukkitFox.getNearbyEntities(10, 5, 10)) {
+                if (nearby instanceof org.bukkit.entity.Chicken && nearby.isValid()) return true;
+            }
+            return false;
         }
         @Override public boolean canContinueToUse() { return canUse(); }
         @Override public void tick() {
+            if (!canUse()) return;
             Player p = Bukkit.getPlayer(pet.owner);
             if (p != null) fox.getLookControl().setLookAt(((CraftPlayer) p).getHandle(), 10.0f, fox.getMaxHeadXRot());
         }
