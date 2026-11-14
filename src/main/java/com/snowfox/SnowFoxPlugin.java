@@ -151,7 +151,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     final class FoxPounceGoal extends Goal {
         private final net.minecraft.world.entity.animal.fox.Fox fox;
         private final Pet pet;
-        private int crouchTicks, cooldown;
+        private int crouchTicks, cooldown, hitCooldown;
         FoxPounceGoal(net.minecraft.world.entity.animal.fox.Fox fox, Pet pet) {
             this.fox = fox;
             this.pet = pet;
@@ -181,6 +181,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             double distance = bukkitFox.getLocation().distanceSquared(target.getLocation());
             fox.getLookControl().setLookAt(target.getLocation().getX(), target.getEyeLocation().getY(), target.getLocation().getZ());
             if (cooldown > 0) cooldown--;
+            if (hitCooldown > 0) hitCooldown--;
             if (distance > 4 && distance < 64 && fox.onGround() && cooldown == 0) {
                 fox.getNavigation().stop();
                 bukkitFox.setCrouching(true);
@@ -198,9 +199,9 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 crouchTicks = 0;
                 fox.getNavigation().moveTo(target.getLocation().getX(), target.getLocation().getY(), target.getLocation().getZ(), 1.3);
             }
-            if (distance < 3 && cooldown <= 20) {
+            if (distance < 3 && hitCooldown == 0) {
                 target.damage(2.0, bukkitFox);
-                cooldown = 35;
+                hitCooldown = 20;
             }
         }
     }
