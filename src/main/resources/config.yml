@@ -15,4 +15,4 @@ combat:
   wolf-style-attacks: false
 
 fox:
-  default-adult: false
+  allow-natural-aging: false
