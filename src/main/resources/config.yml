@@ -1,0 +1,11 @@
+following:
+  start-distance: 4.0
+  stop-distance: 2.0
+  speed: 1.15
+  teleport-distance: 24.0
+  repath-ticks: 10
+  stuck-check-ticks: 40
+  stuck-checks-before-teleport: 4
+
+effects:
+  allow-snowflake-particles: true
