@@ -1,7 +1,7 @@
 name: Build SnowFox
 on:
   push:
-    branches: [main]
+    branches: [main, refactor/code-organization]
   workflow_dispatch:
 jobs:
   build:
