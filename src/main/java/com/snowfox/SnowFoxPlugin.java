@@ -74,13 +74,12 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         fox.setInvulnerable(true);
         fox.setPersistent(true);
         fox.setRemoveWhenFarAway(false);
-        fox.setCanPickupItems(false);
+        fox.setCanPickupItems(true);
         fox.setAge(-24000);
         fox.setAgeLock(true);
         fox.setFoxType(Fox.Type.SNOW);
         fox.setCustomName(pet.name);
         fox.setCustomNameVisible(true);
-        fox.setTarget(null);
         installWolfGoals(fox, pet);
         // Keep AI and gravity enabled while seated; the follow goal respects pet.stay.
         fox.setAI(true);
@@ -93,14 +92,27 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         net.minecraft.world.entity.animal.fox.Fox handle = ((CraftFox) fox).getHandle();
         if (wolfGoalsInstalled.get(fox.getUniqueId()) == handle) return;
         wolfGoalsInstalled.put(fox.getUniqueId(), handle);
-        handle.goalSelector.removeAllGoals(goal -> true);
-        // Remove vanilla fox attack/hunt targets as well as its movement goals.
-        handle.targetSelector.removeAllGoals(goal -> true);
-        handle.goalSelector.addGoal(0, new FloatGoal(handle));
+        // Preserve vanilla fox prey selection, stalking, pouncing, and eating goals.
+        // The companion goals take precedence only when Snowy isn't hunting.
+        handle.goalSelector.addGoal(0, new FoxStayGoal(handle, pet));
         handle.goalSelector.addGoal(2, new FoxFollowOwnerGoal(handle, pet));
         handle.goalSelector.addGoal(7, new FoxLookAtOwnerGoal(handle, pet));
         // Allow natural idle head movement while seated or near the owner.
         handle.goalSelector.addGoal(8, new RandomLookAroundGoal(handle));
+    }
+
+    final class FoxStayGoal extends Goal {
+        private final net.minecraft.world.entity.animal.fox.Fox fox;
+        private final Pet pet;
+        FoxStayGoal(net.minecraft.world.entity.animal.fox.Fox fox, Pet pet) {
+            this.fox = fox;
+            this.pet = pet;
+            setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.JUMP));
+        }
+        @Override public boolean canUse() { return pet.stay || Bukkit.getPlayer(pet.owner) == null; }
+        @Override public boolean canContinueToUse() { return canUse(); }
+        @Override public void start() { fox.getNavigation().stop(); fox.setTarget(null); }
+        @Override public void tick() { fox.getNavigation().stop(); }
     }
 
     final class FoxFollowOwnerGoal extends Goal {
@@ -115,12 +127,12 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         private Player owner() { return Bukkit.getPlayer(pet.owner); }
         @Override public boolean canUse() {
             Player p = owner();
-            return !pet.stay && p != null && p.getWorld().getUID().equals(fox.getBukkitEntity().getWorld().getUID())
+            return !pet.stay && fox.getTarget() == null && p != null && p.getWorld().getUID().equals(fox.getBukkitEntity().getWorld().getUID())
                     && fox.distanceToSqr(((CraftPlayer) p).getHandle()) > 100.0;
         }
         @Override public boolean canContinueToUse() {
             Player p = owner();
-            return !pet.stay && p != null && p.getWorld().getUID().equals(fox.getBukkitEntity().getWorld().getUID())
+            return !pet.stay && fox.getTarget() == null && p != null && p.getWorld().getUID().equals(fox.getBukkitEntity().getWorld().getUID())
                     && fox.distanceToSqr(((CraftPlayer) p).getHandle()) > 4.0;
         }
         @Override public void start() { recalc = 0; }
@@ -256,13 +268,21 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         if (pet != null && pet.fox != null) dropped.put(e.getItemDrop().getUniqueId(), new Pending(pet.owner, ticks + 100));
     }
     @EventHandler public void onPickup(EntityPickupItemEvent e) {
-        if (e.getEntity() instanceof Fox fox && isManaged(fox)) e.setCancelled(true);
+        if (!(e.getEntity() instanceof Fox fox) || !isManaged(fox)) return;
+        // Keep owner-to-mouth swapping exclusive, but allow natural chicken pickups.
+        if (dropped.containsKey(e.getItem().getUniqueId())) { e.setCancelled(true); return; }
+        if (e.getItem().getItemStack().getType() != Material.CHICKEN
+                && e.getItem().getItemStack().getType() != Material.COOKED_CHICKEN) e.setCancelled(true);
     }
     @EventHandler public void onDamage(EntityDamageEvent e) {
         if (e.getEntity() instanceof Fox fox && owners.containsKey(fox.getUniqueId())) e.setCancelled(true);
     }
     @EventHandler public void onTarget(EntityTargetEvent e) {
-        if (e.getEntity() instanceof Fox fox && owners.containsKey(fox.getUniqueId())) e.setCancelled(true);
+        if (e.getEntity() instanceof Fox fox && owners.containsKey(fox.getUniqueId())) {
+            if (e.getTarget() instanceof Player || e.getTarget() instanceof Fox
+                    || (pets.get(owners.get(fox.getUniqueId())) != null
+                    && pets.get(owners.get(fox.getUniqueId())).stay)) e.setCancelled(true);
+        }
     }
     @EventHandler public void onInteract(PlayerInteractEntityEvent e) {
         if (e.getHand() != EquipmentSlot.HAND) return;
