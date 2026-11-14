@@ -11,7 +11,7 @@ final class PetStorage {
     void load() {
         if (!plugin.file.exists()) return;
         YamlConfiguration y = YamlConfiguration.loadConfiguration(plugin.file);
-        ConfigurationSection section = y.getConfigurationSection("plugin.pets");
+        ConfigurationSection section = y.getConfigurationSection("pets");
         if (section == null) return;
         for (String key : section.getKeys(false)) {
             try {
@@ -43,6 +43,6 @@ final class PetStorage {
             y.set(path + ".last", pet.last);
             y.set(path + ".seat", pet.seat);
         }
-        try { y.save(plugin.file); } catch (IOException e) { plugin.getLogger().severe("Could not save plugin.pets.yml: " + e.getMessage()); }
+        try { y.save(plugin.file); } catch (IOException e) { plugin.getLogger().severe("Could not save pets.yml: " + e.getMessage()); }
     }
 }
