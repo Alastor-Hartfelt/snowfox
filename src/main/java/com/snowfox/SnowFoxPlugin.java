@@ -24,18 +24,6 @@ import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 
 public final class SnowFoxPlugin extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
     static final UUID ORIGINAL = UUID.fromString("3c2db120-d8f9-3718-bdc3-45e02d25bb6b");
-    static final class Pet {
-        final UUID owner;
-        UUID fox;
-        String name = "Snowy";
-        boolean stay, particles;
-        boolean movementMessages = true, itemMessages = true;
-        Location last, seat, previous;
-        int stuck, repath;
-        Location lastGoal;
-        Pet(UUID owner) { this.owner = owner; }
-    }
-    record Pending(UUID owner, long expires) {}
     final Map<UUID, Pet> pets = new HashMap<>();
     final Map<UUID, UUID> owners = new HashMap<>();
     final Map<UUID, Pending> dropped = new HashMap<>();
