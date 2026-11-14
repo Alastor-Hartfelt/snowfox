@@ -32,7 +32,10 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     int followRepathTicks = 10, stuckCheckTicks = 40, stuckChecksBeforeTeleport = 4;
     boolean snowflakeParticlesEnabled = true;
     final SnowFoxSettings settings = new SnowFoxSettings(this);
+    final PetStorage storage = new PetStorage(this);
     void loadSettings() { settings.loadSettings(); }
+    void load() { storage.load(); }
+    void save() { storage.save(); }
     long ticks;
     NamespacedKey petKey;
     final Map<UUID, Long> eatingUntil = new HashMap<>();
@@ -383,41 +386,5 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             return List.of("on", "off", "toggle").stream().filter(s -> s.startsWith(args[2].toLowerCase(Locale.ROOT))).toList();
         return Collections.emptyList();
     }
-    void load() {
-        if (!file.exists()) return;
-        YamlConfiguration y = YamlConfiguration.loadConfiguration(file);
-        ConfigurationSection section = y.getConfigurationSection("pets");
-        if (section == null) return;
-        for (String key : section.getKeys(false)) {
-            try {
-                Pet pet = new Pet(UUID.fromString(key));
-                String fox = y.getString("pets." + key + ".fox");
-                if (fox != null) pet.fox = UUID.fromString(fox);
-                pet.name = y.getString("pets." + key + ".name", "Snowy");
-                pet.stay = y.getBoolean("pets." + key + ".stay");
-                pet.particles = y.getBoolean("pets." + key + ".particles");
-                pet.movementMessages = y.getBoolean("pets." + key + ".messages.movement", true);
-                pet.itemMessages = y.getBoolean("pets." + key + ".messages.items", true);
-                pet.last = y.getLocation("pets." + key + ".last");
-                pet.seat = y.getLocation("pets." + key + ".seat");
-                pets.put(pet.owner, pet);
-                if (pet.fox != null) owners.put(pet.fox, pet.owner);
-            } catch (IllegalArgumentException ex) { getLogger().warning("Invalid pet record " + key); }
-        }
-    }
-    void save() {
-        YamlConfiguration y = new YamlConfiguration();
-        for (Pet pet : pets.values()) {
-            String path = "pets." + pet.owner;
-            y.set(path + ".fox", pet.fox == null ? null : pet.fox.toString());
-            y.set(path + ".name", pet.name);
-            y.set(path + ".stay", pet.stay);
-            y.set(path + ".particles", pet.particles);
-            y.set(path + ".messages.movement", pet.movementMessages);
-            y.set(path + ".messages.items", pet.itemMessages);
-            y.set(path + ".last", pet.last);
-            y.set(path + ".seat", pet.seat);
-        }
-        try { y.save(file); } catch (IOException e) { getLogger().severe("Could not save pets.yml: " + e.getMessage()); }
-    }
+
 }
