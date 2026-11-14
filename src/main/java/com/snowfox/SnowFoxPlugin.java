@@ -117,6 +117,64 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
         handle.goalSelector.addGoal(8, new RandomLookAroundGoal(handle));
     }
 
+    final class FoxPounceGoal extends Goal {
+        private final net.minecraft.world.entity.animal.fox.Fox fox;
+        private final Pet pet;
+        private int crouchTicks, cooldown, hitCooldown;
+        FoxPounceGoal(net.minecraft.world.entity.animal.fox.Fox fox, Pet pet) {
+            this.fox = fox;
+            this.pet = pet;
+            setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK, Goal.Flag.JUMP));
+        }
+        private LivingEntity selectedTarget() {
+            if (!wolfStyleCombatEnabled || !"fox".equals(attackStyle) || pet.stay) return null;
+            UUID id = pounceTargets.get(fox.getUUID());
+            if (id == null || ticks >= pounceUntil.getOrDefault(fox.getUUID(), 0L)) return null;
+            Entity entity = Bukkit.getEntity(id);
+            if (!(entity instanceof LivingEntity victim) || victim instanceof Player || victim instanceof Fox
+                    || !victim.isValid() || victim.isDead() || victim.getWorld() != fox.getBukkitEntity().getWorld()
+                    || victim.getLocation().distanceSquared(fox.getBukkitEntity().getLocation()) > 256) return null;
+            return victim;
+        }
+        @Override public boolean canUse() { return selectedTarget() != null; }
+        @Override public boolean canContinueToUse() { return selectedTarget() != null; }
+        @Override public void stop() {
+            ((Fox) fox.getBukkitEntity()).setCrouching(false);
+            fox.getNavigation().stop();
+            crouchTicks = 0;
+        }
+        @Override public void tick() {
+            LivingEntity target = selectedTarget();
+            if (target == null) return;
+            Fox bukkitFox = (Fox) fox.getBukkitEntity();
+            double distance = bukkitFox.getLocation().distanceSquared(target.getLocation());
+            fox.getLookControl().setLookAt(target.getLocation().getX(), target.getEyeLocation().getY(), target.getLocation().getZ());
+            if (cooldown > 0) cooldown--;
+            if (hitCooldown > 0) hitCooldown--;
+            if (distance > 4 && distance < 64 && fox.onGround() && cooldown == 0) {
+                fox.getNavigation().stop();
+                bukkitFox.setCrouching(true);
+                if (++crouchTicks >= 16) {
+                    bukkitFox.setCrouching(false);
+                    org.bukkit.util.Vector vector = target.getLocation().toVector().subtract(bukkitFox.getLocation().toVector());
+                    if (vector.lengthSquared() > 0.01) {
+                        bukkitFox.setVelocity(vector.normalize().multiply(0.85).setY(0.48));
+                    }
+                    crouchTicks = 0;
+                    cooldown = 35;
+                }
+            } else {
+                bukkitFox.setCrouching(false);
+                crouchTicks = 0;
+                fox.getNavigation().moveTo(target.getLocation().getX(), target.getLocation().getY(), target.getLocation().getZ(), 1.3);
+            }
+            if (distance < 3 && hitCooldown == 0) {
+                target.damage(2.0, bukkitFox);
+                hitCooldown = 20;
+            }
+        }
+    }
+
     void sit(Fox fox, Pet pet, boolean value) {
         pet.stay = value;
         pet.seat = value ? fox.getLocation().clone() : null;
