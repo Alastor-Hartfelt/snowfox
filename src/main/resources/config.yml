@@ -12,8 +12,7 @@ effects:
   snowflake-particle-amount: 1
 
 combat:
-  attacks: true
-  attack-style: fox # fox (vanilla hunting AI) or wolf
+  wolf-style-attacks: false
 
 fox:
   allow-natural-aging: false
