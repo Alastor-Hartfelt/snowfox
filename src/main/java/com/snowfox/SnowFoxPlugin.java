@@ -420,9 +420,9 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 String name = cmd.equals("snowfox") ? (args.length > 1 ? String.join(" ", Arrays.copyOfRange(args, 1, args.length)) : "") : String.join(" ", args);
                 if (name.isBlank() || name.length() > 32) { tell(p, "&cName must be 1-32 characters."); break; }
                 if (pet == null || pet.fox == null) { tell(p, "&cSummon your fox first."); break; }
-                pet.name = name.replace('§', ' ');
+                pet.name = ChatColor.translateAlternateColorCodes('&', name);
                 if (fox != null) fox.setCustomName(pet.name);
-                save(); tell(p, "&aRenamed to &f" + pet.name);
+                save(); tell(p, "&aRenamed to &r" + pet.name);
             }
             case "particles" -> {
                 if (pet == null) { tell(p, "&cSummon first."); break; }
