@@ -95,7 +95,8 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         // Preserve vanilla fox prey selection, stalking, pouncing, and eating goals.
         // The companion goals take precedence only when Snowy isn't hunting.
         handle.goalSelector.addGoal(0, new FoxStayGoal(handle, pet));
-        handle.goalSelector.addGoal(2, new FoxFollowOwnerGoal(handle, pet));
+        // Follow only when vanilla hunting goals are not using movement.
+        handle.goalSelector.addGoal(9, new FoxFollowOwnerGoal(handle, pet));
         handle.goalSelector.addGoal(7, new FoxLookAtOwnerGoal(handle, pet));
         // Allow natural idle head movement while seated or near the owner.
         handle.goalSelector.addGoal(8, new RandomLookAroundGoal(handle));
@@ -144,10 +145,11 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                     && fox.distanceToSqr(((CraftPlayer) p).getHandle()) > 4.0;
         }
         @Override public void start() { recalc = 0; }
-        @Override public void stop() { fox.getNavigation().stop(); }
+        @Override public void stop() { if (fox.getTarget() == null) fox.getNavigation().stop(); }
         @Override public void tick() {
             Player p = owner();
-            if (p == null || pet.stay || fox.getTarget() != null) { fox.getNavigation().stop(); return; }
+            if (p == null || pet.stay) { fox.getNavigation().stop(); return; }
+            if (fox.getTarget() != null) return;
             var target = ((CraftPlayer) p).getHandle();
             fox.getLookControl().setLookAt(target, 10.0f, fox.getMaxHeadXRot());
             if (--recalc <= 0) {
