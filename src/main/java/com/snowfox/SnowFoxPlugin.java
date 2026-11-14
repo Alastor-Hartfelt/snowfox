@@ -20,6 +20,7 @@ import org.bukkit.craftbukkit.entity.CraftFox;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
+import net.minecraft.world.entity.ai.goal.FollowParentGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 
 public final class SnowFoxPlugin extends JavaPlugin implements Listener {
@@ -98,6 +99,13 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
         net.minecraft.world.entity.animal.fox.Fox handle = ((CraftFox) fox).getHandle();
         if (wolfGoalsInstalled.get(fox.getUniqueId()) == handle) return;
         wolfGoalsInstalled.put(fox.getUniqueId(), handle);
+        // Baby foxes should follow their player, not the vanilla nearest adult fox.
+        // Remove only the vanilla parent-following goal; retain hunting and other fox AI.
+        for (var wrapped : new ArrayList<>(handle.goalSelector.getAvailableGoals())) {
+            if (wrapped.getGoal() instanceof FollowParentGoal) {
+                handle.goalSelector.removeGoal(wrapped.getGoal());
+            }
+        }
         handle.goalSelector.addGoal(0, new FoxStayGoal(this, handle, pet));
         handle.goalSelector.addGoal(4, new FoxFollowOwnerGoal(this, handle, pet));
         handle.goalSelector.addGoal(7, new FoxLookAtOwnerGoal(this, handle, pet));
