@@ -16,6 +16,11 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.BoundingBox;
 import java.io.*;
 import java.util.*;
+import org.bukkit.craftbukkit.entity.CraftFox;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
+import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.entity.ai.goal.FloatGoal;
+import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 
 public final class SnowFoxPlugin extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
     static final UUID ORIGINAL = UUID.fromString("3c2db120-d8f9-3718-bdc3-45e02d25bb6b");
@@ -24,6 +29,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         UUID fox;
         String name = "Snowy";
         boolean stay, particles;
+        boolean movementMessages = true, itemMessages = true;
         Location last, seat, previous;
         int stuck, repath;
         Location lastGoal;
@@ -37,6 +43,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     long ticks;
     NamespacedKey petKey;
     final Map<UUID, Long> eatingUntil = new HashMap<>();
+    final Map<UUID, net.minecraft.world.entity.animal.fox.Fox> wolfGoalsInstalled = new HashMap<>();
 
     @Override public void onEnable() {
         getDataFolder().mkdirs();
@@ -53,6 +60,12 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     }
     @Override public void onDisable() { save(); }
     void tell(Player p, String s) { p.sendMessage(ChatColor.translateAlternateColorCodes('&', "&bSnowFox &7» " + s)); }
+    void notifyMovement(Player p, Pet pet, String message) {
+        if (pet == null || pet.movementMessages) tell(p, message);
+    }
+    void notifyItem(Player p, Pet pet, String message) {
+        if (pet == null || pet.itemMessages) tell(p, message);
+    }
     boolean allowed(Player p) { return p.getUniqueId().equals(ORIGINAL) || p.hasPermission("snowfox.use"); }
     Fox find(Pet pet, boolean loadChunk) {
         if (pet == null || pet.fox == null) return null;
@@ -68,25 +81,126 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         fox.setInvulnerable(true);
         fox.setPersistent(true);
         fox.setRemoveWhenFarAway(false);
-        fox.setCanPickupItems(false);
+        fox.setCanPickupItems(true);
         fox.setAge(-24000);
         fox.setAgeLock(true);
         fox.setFoxType(Fox.Type.SNOW);
         fox.setCustomName(pet.name);
         fox.setCustomNameVisible(true);
-        fox.setTarget(null);
-        fox.setAI(!pet.stay && Bukkit.getPlayer(pet.owner) != null);
+        installWolfGoals(fox, pet);
+        fox.setAI(true);
+        fox.setGravity(true);
         Player p = Bukkit.getPlayer(pet.owner);
         if (p != null) fox.setFirstTrustedPlayer(p);
     }
+    void installWolfGoals(Fox fox, Pet pet) {
+        net.minecraft.world.entity.animal.fox.Fox handle = ((CraftFox) fox).getHandle();
+        if (wolfGoalsInstalled.get(fox.getUniqueId()) == handle) return;
+        wolfGoalsInstalled.put(fox.getUniqueId(), handle);
+        handle.goalSelector.addGoal(0, new FoxStayGoal(handle, pet));
+        handle.goalSelector.addGoal(9, new FoxFollowOwnerGoal(handle, pet));
+        handle.goalSelector.addGoal(7, new FoxLookAtOwnerGoal(handle, pet));
+        handle.goalSelector.addGoal(8, new RandomLookAroundGoal(handle));
+    }
+
+    final class FoxStayGoal extends Goal {
+        private final net.minecraft.world.entity.animal.fox.Fox fox;
+        private final Pet pet;
+        FoxStayGoal(net.minecraft.world.entity.animal.fox.Fox fox, Pet pet) {
+            this.fox = fox;
+            this.pet = pet;
+            setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.JUMP, Goal.Flag.TARGET));
+        }
+        @Override public boolean canUse() { return pet.stay || Bukkit.getPlayer(pet.owner) == null; }
+        @Override public boolean canContinueToUse() { return canUse(); }
+        @Override public void start() { holdPosition(); }
+        @Override public void tick() { holdPosition(); }
+        private void holdPosition() {
+            fox.getNavigation().stop();
+            fox.setTarget(null);
+            var motion = fox.getDeltaMovement();
+            fox.setDeltaMovement(0.0, motion.y, 0.0);
+            fox.getMoveControl().setWantedPosition(fox.getX(), fox.getY(), fox.getZ(), 0.0);
+        }
+    }
+
+    final class FoxFollowOwnerGoal extends Goal {
+        private final net.minecraft.world.entity.animal.fox.Fox fox;
+        private final Pet pet;
+        private int recalc;
+        FoxFollowOwnerGoal(net.minecraft.world.entity.animal.fox.Fox fox, Pet pet) {
+            this.fox = fox;
+            this.pet = pet;
+            setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
+        }
+        private Player owner() { return Bukkit.getPlayer(pet.owner); }
+        @Override public boolean canUse() {
+            Player p = owner();
+            return !pet.stay && fox.getTarget() == null && p != null && p.getWorld().getUID().equals(fox.getBukkitEntity().getWorld().getUID())
+                    && fox.distanceToSqr(((CraftPlayer) p).getHandle()) > 100.0;
+        }
+        @Override public boolean canContinueToUse() {
+            Player p = owner();
+            return !pet.stay && fox.getTarget() == null && p != null && p.getWorld().getUID().equals(fox.getBukkitEntity().getWorld().getUID())
+                    && fox.distanceToSqr(((CraftPlayer) p).getHandle()) > 4.0;
+        }
+        @Override public void start() { recalc = 0; }
+        @Override public void stop() { if (fox.getTarget() == null) fox.getNavigation().stop(); }
+        @Override public void tick() {
+            Player p = owner();
+            if (p == null || pet.stay) { fox.getNavigation().stop(); return; }
+            if (fox.getTarget() != null) return;
+            var target = ((CraftPlayer) p).getHandle();
+            fox.getLookControl().setLookAt(target, 10.0f, fox.getMaxHeadXRot());
+            if (--recalc <= 0) {
+                recalc = 10;
+                fox.getNavigation().moveTo(target, 1.15);
+            }
+        }
+    }
+
+    final class FoxLookAtOwnerGoal extends Goal {
+        private final net.minecraft.world.entity.animal.fox.Fox fox;
+        private final Pet pet;
+        FoxLookAtOwnerGoal(net.minecraft.world.entity.animal.fox.Fox fox, Pet pet) {
+            this.fox = fox;
+            this.pet = pet;
+            setFlags(EnumSet.of(Goal.Flag.LOOK));
+        }
+        @Override public boolean canUse() {
+            Player p = Bukkit.getPlayer(pet.owner);
+            if (p == null || !p.getWorld().getUID().equals(fox.getBukkitEntity().getWorld().getUID())
+                    || fox.distanceToSqr(((CraftPlayer) p).getHandle()) >= 64.0) return false;
+            if (!pet.stay && (fox.getTarget() != null || preyNearby())) return false;
+            return true;
+        }
+        private boolean preyNearby() {
+            org.bukkit.entity.Entity bukkitFox = fox.getBukkitEntity();
+            for (org.bukkit.entity.Entity nearby : bukkitFox.getNearbyEntities(10, 5, 10)) {
+                if (nearby instanceof org.bukkit.entity.Chicken && nearby.isValid()) return true;
+            }
+            return false;
+        }
+        @Override public boolean canContinueToUse() { return canUse(); }
+        @Override public void tick() {
+            if (!canUse()) return;
+            Player p = Bukkit.getPlayer(pet.owner);
+            if (p != null) fox.getLookControl().setLookAt(((CraftPlayer) p).getHandle(), 10.0f, fox.getMaxHeadXRot());
+        }
+    }
+
     void sit(Fox fox, Pet pet, boolean value) {
         pet.stay = value;
         pet.seat = value ? fox.getLocation().clone() : null;
         pet.previous = null; pet.lastGoal = null; pet.stuck = 0; pet.repath = 0;
         fox.getPathfinder().stopPathfinding();
+        if (value) {
+            var motion = ((CraftFox) fox).getHandle().getDeltaMovement();
+            ((CraftFox) fox).getHandle().setDeltaMovement(0.0, motion.y, 0.0);
+        }
         fox.setSitting(value);
-        fox.setAI(!value);
-        if (value) fox.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+        fox.setAI(true);
+        fox.setGravity(true);
         save();
     }
     void summon(Player p) {
@@ -116,52 +230,27 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             Player owner = Bukkit.getPlayer(pet.owner);
             pet.last = fox.getLocation().clone();
             if (owner == null || pet.stay) {
-                // Disable fox wandering/targeting goals while seated or owner is offline.
                 fox.getPathfinder().stopPathfinding();
-                if (fox.hasAI()) fox.setAI(false);
+                var motion = ((CraftFox) fox).getHandle().getDeltaMovement();
+                ((CraftFox) fox).getHandle().setDeltaMovement(0.0, motion.y, 0.0);
                 fox.setSitting(true);
-                if (pet.stay && pet.seat != null && pet.seat.getWorld() == fox.getWorld()
-                        && pet.seat.distanceSquared(fox.getLocation()) > 0.25) {
-                    fox.teleport(pet.seat);
-                }
-                pet.lastGoal = null;
-                pet.previous = null;
-                pet.stuck = 0;
             } else {
-                if (!fox.hasAI()) fox.setAI(true);
                 fox.setSitting(false);
-                if (owner.getWorld() != fox.getWorld()) {
+                if (owner.getWorld() != fox.getWorld()
+                        || fox.getLocation().distanceSquared(owner.getLocation()) > 24 * 24) {
                     fox.teleport(owner.getLocation());
-                    pet.repath = 0; pet.stuck = 0; pet.previous = null; pet.lastGoal = null;
-                } else {
+                    pet.stuck = 0;
+                    pet.previous = null;
+                } else if (ticks % 40 == 0) {
                     double distance = fox.getLocation().distanceSquared(owner.getLocation());
-                    if (distance > 24 * 24) {
+                    if (distance > 36 && pet.previous != null
+                            && pet.previous.getWorld() == fox.getWorld()
+                            && pet.previous.distanceSquared(fox.getLocation()) < 0.16) pet.stuck++;
+                    else pet.stuck = 0;
+                    pet.previous = fox.getLocation().clone();
+                    if (pet.stuck >= 4) {
                         fox.teleport(owner.getLocation());
-                        pet.repath = 0; pet.stuck = 0; pet.previous = null; pet.lastGoal = null;
-                    } else if (distance <= 3 * 3) {
-                        fox.getPathfinder().stopPathfinding();
-                        pet.stuck = 0; pet.repath = 0; pet.lastGoal = null;
-                    } else {
-                        // Repath toward a moving owner rather than repeatedly chasing a stale point.
-                        Location goal = owner.getLocation();
-                        boolean moved = pet.lastGoal == null || pet.lastGoal.getWorld() != goal.getWorld()
-                                || pet.lastGoal.distanceSquared(goal) > 2.25;
-                        if (moved || pet.repath-- <= 0 || !fox.getPathfinder().hasPath()) {
-                            fox.getPathfinder().moveTo(owner, 1.15);
-                            pet.lastGoal = goal.clone();
-                            pet.repath = 8;
-                        }
-                        if (ticks % 40 == 0) {
-                            if (pet.previous != null && pet.previous.getWorld() == fox.getWorld()
-                                    && pet.previous.distanceSquared(fox.getLocation()) < 0.16
-                                    && distance > 6 * 6) pet.stuck++;
-                            else pet.stuck = 0;
-                            pet.previous = fox.getLocation().clone();
-                            if (pet.stuck >= 4) {
-                                fox.teleport(owner.getLocation());
-                                pet.stuck = 0; pet.repath = 0; pet.previous = null; pet.lastGoal = null;
-                            }
-                        }
+                        pet.stuck = 0;
                     }
                 }
             }
@@ -188,6 +277,8 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             }
             item.remove();
             dropped.remove(id);
+            Player recipient = Bukkit.getPlayer(pending.owner());
+            if (recipient != null) notifyItem(recipient, pets.get(pending.owner()), "&aItem swapped!");
             if (!old.getType().isAir()) {
                 Item returned = fox.getWorld().dropItemNaturally(fox.getLocation(), old);
                 returned.setPickupDelay(20);
@@ -203,13 +294,20 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         if (pet != null && pet.fox != null) dropped.put(e.getItemDrop().getUniqueId(), new Pending(pet.owner, ticks + 100));
     }
     @EventHandler public void onPickup(EntityPickupItemEvent e) {
-        if (e.getEntity() instanceof Fox fox && isManaged(fox)) e.setCancelled(true);
+        if (!(e.getEntity() instanceof Fox fox) || !isManaged(fox)) return;
+        if (dropped.containsKey(e.getItem().getUniqueId())) { e.setCancelled(true); return; }
+        if (e.getItem().getItemStack().getType() != Material.CHICKEN
+                && e.getItem().getItemStack().getType() != Material.COOKED_CHICKEN) e.setCancelled(true);
     }
     @EventHandler public void onDamage(EntityDamageEvent e) {
         if (e.getEntity() instanceof Fox fox && owners.containsKey(fox.getUniqueId())) e.setCancelled(true);
     }
     @EventHandler public void onTarget(EntityTargetEvent e) {
-        if (e.getEntity() instanceof Fox fox && owners.containsKey(fox.getUniqueId())) e.setCancelled(true);
+        if (e.getEntity() instanceof Fox fox && owners.containsKey(fox.getUniqueId())) {
+            if (e.getTarget() instanceof Player || e.getTarget() instanceof Fox
+                    || (pets.get(owners.get(fox.getUniqueId())) != null
+                    && pets.get(owners.get(fox.getUniqueId())).stay)) e.setCancelled(true);
+        }
     }
     @EventHandler public void onInteract(PlayerInteractEntityEvent e) {
         if (e.getHand() != EquipmentSlot.HAND) return;
@@ -225,12 +323,12 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             if (hand.getAmount() == 1) p.getInventory().setItemInMainHand(null);
             else hand.setAmount(hand.getAmount() - 1);
             eatChicken(fox, pet);
-            tell(p, "&aSnowy enjoyed the chicken!");
+            notifyItem(p, pet, "&aSnowy enjoyed the chicken!");
             return;
         }
         if (!hand.getType().isAir()) return;
         sit(fox, pet, !pet.stay);
-        tell(p, pet.stay ? "&eSnowy is sitting!" : "&aSnowy is following!");
+        notifyMovement(p, pet, pet.stay ? "&eSnowy is sitting!" : "&aSnowy is following!");
     }
     boolean isChicken(ItemStack item) {
         if (item == null) return false;
@@ -241,7 +339,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     }
     void setEating(Fox fox, boolean eating) {
         try { fox.getClass().getMethod("setEating", boolean.class).invoke(fox, eating); }
-        catch (ReflectiveOperationException ignored) { /* Animation unavailable on this server build. */ }
+        catch (ReflectiveOperationException ignored) { }
     }
     void eatChicken(Fox fox, Pet pet) {
         if (!pet.stay) return;
@@ -280,15 +378,40 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             }
             case "stay" -> {
                 if (fox == null) { tell(p, "&cSummon your fox first."); break; }
-                sit(fox, pet, !pet.stay); tell(p, pet.stay ? "&eSnowy is sitting!" : "&aSnowy is following!");
+                sit(fox, pet, !pet.stay); notifyMovement(p, pet, pet.stay ? "&eSnowy is sitting!" : "&aSnowy is following!");
+            }
+            case "messages" -> {
+                Pet settings = pets.computeIfAbsent(p.getUniqueId(), Pet::new);
+                int offset = cmd.equals("snowfox") ? 1 : 0;
+                if (args.length <= offset) {
+                    tell(p, "&eChat messages: &fmovement=" + (settings.movementMessages ? "on" : "off")
+                            + "&f, items=" + (settings.itemMessages ? "on" : "off"));
+                    tell(p, "&7Usage: /snowfox messages <movement|items|all> <on|off|toggle>");
+                    break;
+                }
+                String category = args[offset].toLowerCase(Locale.ROOT);
+                if (!List.of("movement", "items", "all").contains(category)) {
+                    tell(p, "&cChoose movement, items, or all."); break;
+                }
+                String choice = args.length > offset + 1 ? args[offset + 1].toLowerCase(Locale.ROOT) : "toggle";
+                if (!List.of("on", "off", "toggle").contains(choice)) {
+                    tell(p, "&cChoose on, off, or toggle."); break;
+                }
+                if (category.equals("movement") || category.equals("all"))
+                    settings.movementMessages = choice.equals("toggle") ? !settings.movementMessages : choice.equals("on");
+                if (category.equals("items") || category.equals("all"))
+                    settings.itemMessages = choice.equals("toggle") ? !settings.itemMessages : choice.equals("on");
+                save();
+                tell(p, "&aMessages updated: &fmovement=" + (settings.movementMessages ? "on" : "off")
+                        + "&f, items=" + (settings.itemMessages ? "on" : "off"));
             }
             case "rename" -> {
                 String name = cmd.equals("snowfox") ? (args.length > 1 ? String.join(" ", Arrays.copyOfRange(args, 1, args.length)) : "") : String.join(" ", args);
                 if (name.isBlank() || name.length() > 32) { tell(p, "&cName must be 1-32 characters."); break; }
                 if (pet == null || pet.fox == null) { tell(p, "&cSummon your fox first."); break; }
-                pet.name = name.replace('§', ' ');
+                pet.name = ChatColor.translateAlternateColorCodes('&', name);
                 if (fox != null) fox.setCustomName(pet.name);
-                save(); tell(p, "&aRenamed to &f" + pet.name);
+                save(); tell(p, "&aRenamed to &r" + pet.name);
             }
             case "particles" -> {
                 if (pet == null) { tell(p, "&cSummon first."); break; }
@@ -329,13 +452,17 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 owners.remove(pet.fox); pet.fox = null; pet.stay = false; pet.seat = null;
                 save(); tell(p, "&aRegistration reset; name and particles preserved.");
             }
-            default -> tell(p, "&f/snowfox summon, tp, stay, rename <name>, particles, fix, trust, adopt, reset");
+            default -> tell(p, "&f/snowfox summon, tp, stay, messages, rename <name>, particles, fix, trust, adopt, reset");
         }
         return true;
     }
     @Override public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (command.getName().equalsIgnoreCase("snowfox") && args.length == 1)
-            return List.of("summon","tp","stay","rename","particles","fix","trust","adopt","reset").stream().filter(s -> s.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
+            return List.of("summon","tp","stay","messages","rename","particles","fix","trust","adopt","reset").stream().filter(s -> s.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
+        if (command.getName().equalsIgnoreCase("snowfox") && args.length == 2 && args[0].equalsIgnoreCase("messages"))
+            return List.of("movement", "items", "all").stream().filter(s -> s.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
+        if (command.getName().equalsIgnoreCase("snowfox") && args.length == 3 && args[0].equalsIgnoreCase("messages"))
+            return List.of("on", "off", "toggle").stream().filter(s -> s.startsWith(args[2].toLowerCase(Locale.ROOT))).toList();
         return Collections.emptyList();
     }
     void load() {
@@ -351,6 +478,8 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 pet.name = y.getString("pets." + key + ".name", "Snowy");
                 pet.stay = y.getBoolean("pets." + key + ".stay");
                 pet.particles = y.getBoolean("pets." + key + ".particles");
+                pet.movementMessages = y.getBoolean("pets." + key + ".messages.movement", true);
+                pet.itemMessages = y.getBoolean("pets." + key + ".messages.items", true);
                 pet.last = y.getLocation("pets." + key + ".last");
                 pet.seat = y.getLocation("pets." + key + ".seat");
                 pets.put(pet.owner, pet);
@@ -366,6 +495,8 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             y.set(path + ".name", pet.name);
             y.set(path + ".stay", pet.stay);
             y.set(path + ".particles", pet.particles);
+            y.set(path + ".messages.movement", pet.movementMessages);
+            y.set(path + ".messages.items", pet.itemMessages);
             y.set(path + ".last", pet.last);
             y.set(path + ".seat", pet.seat);
         }
