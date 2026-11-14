@@ -9,3 +9,6 @@ following:
 
 effects:
   allow-snowflake-particles: true
+
+combat:
+  wolf-style-attacks: false
