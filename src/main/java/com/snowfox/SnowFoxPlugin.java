@@ -22,6 +22,7 @@ import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.ai.goal.FollowParentGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
+import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 
 public final class SnowFoxPlugin extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
     static final UUID ORIGINAL = UUID.fromString("3c2db120-d8f9-3718-bdc3-45e02d25bb6b");
@@ -138,7 +139,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         }
         handle.goalSelector.addGoal(0, new FoxStayGoal(handle, pet));
         handle.goalSelector.addGoal(4, new FoxFollowOwnerGoal(handle, pet));
-        handle.goalSelector.addGoal(7, new FoxLookAtOwnerGoal(handle, pet));
+        handle.goalSelector.addGoal(7, new LookAtPlayerGoal(handle, net.minecraft.world.entity.LivingEntity.class, 8.0F));
         handle.goalSelector.addGoal(8, new RandomLookAroundGoal(handle));
     }
 
