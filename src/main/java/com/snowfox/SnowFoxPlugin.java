@@ -107,12 +107,20 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         FoxStayGoal(net.minecraft.world.entity.animal.fox.Fox fox, Pet pet) {
             this.fox = fox;
             this.pet = pet;
-            setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.JUMP));
+            setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.JUMP, Goal.Flag.TARGET));
         }
         @Override public boolean canUse() { return pet.stay || Bukkit.getPlayer(pet.owner) == null; }
         @Override public boolean canContinueToUse() { return canUse(); }
-        @Override public void start() { fox.getNavigation().stop(); fox.setTarget(null); }
-        @Override public void tick() { fox.getNavigation().stop(); }
+        @Override public void start() { holdPosition(); }
+        @Override public void tick() { holdPosition(); }
+        private void holdPosition() {
+            fox.getNavigation().stop();
+            fox.setTarget(null);
+            // Clear leftover movement from rapidly switching between follow and sit.
+            var motion = fox.getDeltaMovement();
+            fox.setDeltaMovement(0.0, motion.y, 0.0);
+            fox.getMoveControl().setWantedPosition(fox.getX(), fox.getY(), fox.getZ(), 0.0);
+        }
     }
 
     final class FoxFollowOwnerGoal extends Goal {
@@ -139,7 +147,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         @Override public void stop() { fox.getNavigation().stop(); }
         @Override public void tick() {
             Player p = owner();
-            if (p == null) return;
+            if (p == null || pet.stay || fox.getTarget() != null) { fox.getNavigation().stop(); return; }
             var target = ((CraftPlayer) p).getHandle();
             fox.getLookControl().setLookAt(target, 10.0f, fox.getMaxHeadXRot());
             if (--recalc <= 0) {
@@ -175,6 +183,10 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         pet.seat = value ? fox.getLocation().clone() : null;
         pet.previous = null; pet.lastGoal = null; pet.stuck = 0; pet.repath = 0;
         fox.getPathfinder().stopPathfinding();
+        if (value) {
+            var motion = ((CraftFox) fox).getHandle().getDeltaMovement();
+            ((CraftFox) fox).getHandle().setDeltaMovement(0.0, motion.y, 0.0);
+        }
         fox.setSitting(value);
         fox.setAI(true);
         fox.setGravity(true);
@@ -208,6 +220,8 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             pet.last = fox.getLocation().clone();
             if (owner == null || pet.stay) {
                 fox.getPathfinder().stopPathfinding();
+                var motion = ((CraftFox) fox).getHandle().getDeltaMovement();
+                ((CraftFox) fox).getHandle().setDeltaMovement(0.0, motion.y, 0.0);
                 fox.setSitting(true);
                 // Do not teleport to the original seat: the fox must fall naturally if the floor disappears.
             } else {
