@@ -120,10 +120,11 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
     final class FoxPounceGoal extends Goal {
         private final net.minecraft.world.entity.animal.fox.Fox fox;
         private final Pet pet;
-        private int cooldown, hitCooldown, windup;
+        private int cooldown, windup;
         private boolean diving;
         private boolean airborne;
         private boolean struckThisPounce;
+        
         private int flightTicks;
         FoxPounceGoal(net.minecraft.world.entity.animal.fox.Fox fox, Pet pet) {
             this.fox = fox;
@@ -158,7 +159,6 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
             double distance = bukkitFox.getLocation().distanceSquared(target.getLocation());
             fox.getLookControl().setLookAt(target.getLocation().getX(), target.getEyeLocation().getY(), target.getLocation().getZ());
             if (cooldown > 0) cooldown--;
-            if (hitCooldown > 0) hitCooldown--;
             // Separate the windup, rising arc, and downward strike so navigation
             // cannot interrupt the jump or cause repeated crouch animations.
             if (airborne) {
@@ -175,19 +175,22 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
                             Math.max(-1.25, motion.getY() - 0.22), horizontal.getZ()));
                 }
                 // Apply damage on the actual descending collision, once per leap.
-                if (diving && !struckThisPounce && hitCooldown == 0
-                        && bukkitFox.getBoundingBox().expand(0.25, 0.3, 0.25)
+                if (diving && !struckThisPounce
+                        && bukkitFox.getBoundingBox().expand(0.65, 0.65, 0.65)
                                 .overlaps(target.getBoundingBox())) {
-                    target.damage(2.0, bukkitFox);
-                    struckThisPounce = true;
-                    hitCooldown = 20;
+                    // Native mob attack uses the fox's held main-hand item and enchantments.
+                    net.minecraft.world.entity.Entity victim =
+                            ((org.bukkit.craftbukkit.entity.CraftEntity) target).getHandle();
+                    if (fox.doHurtTarget((net.minecraft.server.level.ServerLevel) fox.level(), victim)) {
+                        struckThisPounce = true;
+                    }
                 }
                 if (fox.onGround() && flightTicks > 3) {
                     airborne = false;
                     diving = false;
                     flightTicks = 0;
                 }
-            } else if (distance > 4 && distance < 64 && fox.onGround() && cooldown == 0) {
+            } else if (distance > 2.25 && distance < 100 && fox.onGround() && cooldown == 0) {
                 fox.getNavigation().stop();
                 // Avoid the prolonged crouch that looks like shaking.
                 if (++windup >= 3) {
@@ -200,7 +203,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
                         struckThisPounce = false;
                         diving = false;
                         flightTicks = 0;
-                        cooldown = 45;
+                        cooldown = 22;
                     }
                     windup = 0;
                 }
