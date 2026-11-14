@@ -11,7 +11,6 @@ final class Pet {
     boolean stay, particles;
     boolean movementMessages = true, itemMessages = true;
     boolean aging = false;
-    boolean combat = true;
     Fox.Type variant = Fox.Type.SNOW;
     Location last, seat, previous;
     int stuck, repath;
