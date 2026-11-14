@@ -49,6 +49,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     int followRepathTicks = 10, stuckCheckTicks = 40, stuckChecksBeforeTeleport = 4;
     boolean snowflakeParticlesEnabled = true;
     boolean wolfStyleCombatEnabled = false;
+    boolean jumpStyleCombat = true;
     int particleAmount = 1;
     boolean defaultAging = false;
     void loadSettings() {
@@ -61,7 +62,8 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         stuckCheckTicks = (int) bounded("following.stuck-check-ticks", 40, 5, 200);
         stuckChecksBeforeTeleport = (int) bounded("following.stuck-checks-before-teleport", 4, 1, 20);
         snowflakeParticlesEnabled = getConfig().getBoolean("effects.allow-snowflake-particles", true);
-        wolfStyleCombatEnabled = getConfig().getBoolean("combat.wolf-style-attacks", false);
+        wolfStyleCombatEnabled = getConfig().getBoolean("combat.attacks", false);
+        jumpStyleCombat = getConfig().getString("combat.attack-style", "jump").equalsIgnoreCase("jump");
         particleAmount = Math.max(0, Math.min(100, getConfig().getInt("effects.snowflake-particle-amount", 1)));
         defaultAging = getConfig().getBoolean("fox.allow-natural-aging", false);
     }
@@ -263,7 +265,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             fox.getNavigation().moveTo(victim.getLocation().getX(), victim.getLocation().getY(), victim.getLocation().getZ(), 1.3);
             if (cooldown > 0) cooldown--;
             double distance = victim.getLocation().distanceSquared(fox.getBukkitEntity().getLocation());
-            if (distance < 16 && fox.onGround()) fox.getJumpControl().jump();
+            if (jumpStyleCombat && distance < 16 && fox.onGround()) fox.getJumpControl().jump();
             if (distance < 3.0 && cooldown == 0) {
                 victim.damage(2.0, (Fox) fox.getBukkitEntity());
                 cooldown = 20;
