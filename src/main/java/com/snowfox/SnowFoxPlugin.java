@@ -127,7 +127,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
             setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK, Goal.Flag.JUMP));
         }
         private LivingEntity target() {
-            if (!wolfStyleCombatEnabled || !pet.combat || pet.stay) return null;
+            if (!wolfStyleCombatEnabled || jumpStyleCombat || !pet.combat || pet.stay) return null;
             UUID id = combatTargets.get(fox.getUUID());
             if (id == null || ticks >= combatExpires.getOrDefault(fox.getUUID(), 0L)) return null;
             Entity entity = Bukkit.getEntity(id);
@@ -147,7 +147,6 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
             fox.getNavigation().moveTo(victim.getLocation().getX(), victim.getLocation().getY(), victim.getLocation().getZ(), 1.3);
             if (cooldown > 0) cooldown--;
             double distance = victim.getLocation().distanceSquared(fox.getBukkitEntity().getLocation());
-            if (jumpStyleCombat && distance < 16 && fox.onGround()) fox.getJumpControl().jump();
             if (distance < 3.0 && cooldown == 0) {
                 victim.damage(2.0, (Fox) fox.getBukkitEntity());
                 cooldown = 20;
