@@ -13,7 +13,8 @@ final class SnowFoxSettings {
         plugin.stuckCheckTicks = (int) bounded("following.stuck-check-ticks", 40, 5, 200);
         plugin.stuckChecksBeforeTeleport = (int) bounded("following.stuck-checks-before-teleport", 4, 1, 20);
         plugin.snowflakeParticlesEnabled = plugin.getConfig().getBoolean("effects.allow-snowflake-particles", true);
-        plugin.wolfStyleCombatEnabled = plugin.getConfig().getBoolean("combat.wolf-style-attacks", false);
+        plugin.wolfStyleCombatEnabled = plugin.getConfig().getBoolean("combat.attacks", false);
+        plugin.jumpStyleCombat = plugin.getConfig().getString("combat.attack-style", "jump").equalsIgnoreCase("jump");
         plugin.particleAmount = Math.max(0, Math.min(100, plugin.getConfig().getInt("effects.snowflake-particle-amount", 1)));
         plugin.defaultAging = plugin.getConfig().getBoolean("fox.allow-natural-aging", false);
     }
