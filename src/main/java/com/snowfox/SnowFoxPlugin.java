@@ -30,6 +30,8 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         String name = "Snowy";
         boolean stay, particles;
         boolean movementMessages = true, itemMessages = true;
+        boolean adult = false;
+        Fox.Type variant = Fox.Type.SNOW;
         Location last, seat, previous;
         int stuck, repath;
         Location lastGoal;
@@ -44,6 +46,8 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     int followRepathTicks = 10, stuckCheckTicks = 40, stuckChecksBeforeTeleport = 4;
     boolean snowflakeParticlesEnabled = true;
     boolean wolfStyleCombatEnabled = false;
+    int particleAmount = 1;
+    boolean defaultAdult = false;
     void loadSettings() {
         reloadConfig();
         followStop = bounded("following.stop-distance", 2.0, 0.5, 12.0);
@@ -55,6 +59,8 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         stuckChecksBeforeTeleport = (int) bounded("following.stuck-checks-before-teleport", 4, 1, 20);
         snowflakeParticlesEnabled = getConfig().getBoolean("effects.allow-snowflake-particles", true);
         wolfStyleCombatEnabled = getConfig().getBoolean("combat.wolf-style-attacks", false);
+        particleAmount = Math.max(0, Math.min(100, getConfig().getInt("effects.snowflake-particle-amount", 1)));
+        defaultAdult = getConfig().getBoolean("fox.default-adult", false);
     }
     double bounded(String key, double fallback, double min, double max) {
         double value = getConfig().getDouble(key, fallback);
@@ -108,9 +114,9 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         fox.setPersistent(true);
         fox.setRemoveWhenFarAway(false);
         fox.setCanPickupItems(true);
-        fox.setAge(-24000);
+        fox.setAge(pet.adult ? 0 : -24000);
         fox.setAgeLock(true);
-        fox.setFoxType(Fox.Type.SNOW);
+        fox.setFoxType(pet.variant);
         fox.setCustomName(pet.name);
         fox.setCustomNameVisible(true);
         installWolfGoals(fox, pet);
@@ -229,9 +235,11 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         fox.setGravity(true);
         save();
     }
-    void summon(Player p) {
+    void summon(Player p) { summon(p, Fox.Type.SNOW); }
+    void summon(Player p, Fox.Type variant) {
         Pet pet = pets.computeIfAbsent(p.getUniqueId(), Pet::new);
         Fox fox = find(pet, true);
+        if (pet.fox == null) { pet.variant = variant; pet.adult = defaultAdult; }
         if (pet.fox != null && fox == null) {
             tell(p, "&cRegistered fox missing. Use /snowfoxreset only if it was deleted."); return;
         }
@@ -243,7 +251,33 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         protect(fox, pet);
         sit(fox, pet, false);
         pet.last = fox.getLocation().clone();
-        tell(p, "&aYour snow fox is here!");
+        tell(p, "&aYour fox is here!");
+    }
+    void despawn(Player p, Pet pet, Fox fox) {
+        if (pet == null || pet.fox == null) { tell(p, "&cNo registered fox."); return; }
+        if (fox == null) { tell(p, "&cFox is unavailable. Registration kept to avoid losing a fox."); return; }
+        UUID id = pet.fox;
+        ItemStack held = fox.getEquipment().getItemInMainHand();
+        if (held != null && !held.getType().isAir()) fox.getWorld().dropItemNaturally(fox.getLocation(), held.clone());
+        fox.remove();
+        wolfGoalsInstalled.remove(id);
+        eatingUntil.remove(id);
+        owners.remove(id);
+        pet.fox = null;
+        pet.stay = false;
+        pet.seat = null;
+        pet.last = null;
+        pet.previous = null;
+        save();
+        tell(p, "&aFox despawned. You can summon a different variant.");
+    }
+    void dropHeldItem(Player p, Fox fox) {
+        if (fox == null) { tell(p, "&cFox unavailable."); return; }
+        ItemStack held = fox.getEquipment().getItemInMainHand();
+        if (held == null || held.getType().isAir()) { tell(p, "&eYour fox isn't holding anything."); return; }
+        fox.getEquipment().setItemInMainHand(null);
+        fox.getWorld().dropItemNaturally(fox.getLocation(), held.clone());
+        tell(p, "&aYour fox dropped its item.");
     }
     void tick() {
         ticks += 5;
@@ -280,7 +314,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                     }
                 }
             }
-            if (snowflakeParticlesEnabled && pet.particles && ticks % 20 == 0) fox.getWorld().spawnParticle(Particle.SNOWFLAKE, fox.getLocation().add(0, 0.5, 0), 1, .15, .15, .15, .005);
+            if (snowflakeParticlesEnabled && pet.particles && particleAmount > 0 && ticks % 20 == 0) fox.getWorld().spawnParticle(Particle.SNOWFLAKE, fox.getLocation().add(0, 0.5, 0), particleAmount, .15, .15, .15, .005);
         }
         for (UUID id : new ArrayList<>(dropped.keySet())) {
             Pending pending = dropped.get(id);
