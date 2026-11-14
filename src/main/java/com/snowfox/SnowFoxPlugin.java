@@ -34,7 +34,6 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
     int followRepathTicks = 10, stuckCheckTicks = 40, stuckChecksBeforeTeleport = 4;
     boolean snowflakeParticlesEnabled = true;
     boolean wolfStyleCombatEnabled = false;
-    boolean jumpStyleCombat = true;
     int particleAmount = 1;
     boolean defaultAging = false;
     final SnowFoxSettings settings = new SnowFoxSettings(this);
@@ -47,8 +46,6 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
     NamespacedKey petKey;
     final Map<UUID, Long> eatingUntil = new HashMap<>();
     final Map<UUID, net.minecraft.world.entity.animal.fox.Fox> wolfGoalsInstalled = new HashMap<>();
-    final Map<UUID, UUID> combatTargets = new HashMap<>();
-    final Map<UUID, Long> combatExpires = new HashMap<>();
 
     @Override public void onEnable() {
         getDataFolder().mkdirs();
@@ -110,74 +107,10 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
                 handle.goalSelector.removeGoal(wrapped.getGoal());
             }
         }
-        // Disable autonomous hunting and retaliation. Pet attacks are exclusively owner-triggered.
-        for (var wrapped : new ArrayList<>(handle.targetSelector.getAvailableGoals())) {
-            handle.targetSelector.removeGoal(wrapped.getGoal());
-        }
-        handle.setTarget(null);
         handle.goalSelector.addGoal(0, new FoxStayGoal(this, handle, pet));
-        handle.goalSelector.addGoal(2, new FoxOwnerCombatGoal(handle, pet));
         handle.goalSelector.addGoal(4, new FoxFollowOwnerGoal(this, handle, pet));
         handle.goalSelector.addGoal(7, new LookAtPlayerGoal(handle, net.minecraft.world.entity.LivingEntity.class, 8.0F));
         handle.goalSelector.addGoal(8, new RandomLookAroundGoal(handle));
-    }
-
-    final class FoxOwnerCombatGoal extends Goal {
-        private final net.minecraft.world.entity.animal.fox.Fox fox;
-        private final Pet pet;
-        private int cooldown;
-        private int crouchTicks;
-        private int leapCooldown;
-        FoxOwnerCombatGoal(net.minecraft.world.entity.animal.fox.Fox fox, Pet pet) {
-            this.fox = fox;
-            this.pet = pet;
-            setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK, Goal.Flag.JUMP));
-        }
-        private LivingEntity target() {
-            if (!wolfStyleCombatEnabled || !pet.combat || pet.stay) return null;
-            UUID id = combatTargets.get(fox.getUUID());
-            if (id == null || ticks >= combatExpires.getOrDefault(fox.getUUID(), 0L)) return null;
-            Entity entity = Bukkit.getEntity(id);
-            if (!(entity instanceof LivingEntity victim) || victim instanceof Player || victim instanceof Fox
-                    || !victim.isValid() || victim.isDead()
-                    || victim.getWorld() != fox.getBukkitEntity().getWorld()
-                    || victim.getLocation().distanceSquared(fox.getBukkitEntity().getLocation()) > 256) return null;
-            return victim;
-        }
-        @Override public boolean canUse() { return target() != null; }
-        @Override public boolean canContinueToUse() { return target() != null; }
-        @Override public void stop() { fox.getNavigation().stop(); ((Fox) fox.getBukkitEntity()).setCrouching(false); }
-        @Override public void tick() {
-            LivingEntity victim = target();
-            if (victim == null) return;
-            fox.getLookControl().setLookAt(victim.getLocation().getX(), victim.getEyeLocation().getY(), victim.getLocation().getZ());
-            if (cooldown > 0) cooldown--;
-            if (leapCooldown > 0) leapCooldown--;
-            double distance = victim.getLocation().distanceSquared(fox.getBukkitEntity().getLocation());
-            Fox petFox = (Fox) fox.getBukkitEntity();
-            if (jumpStyleCombat && distance > 4 && distance < 64 && fox.onGround() && leapCooldown == 0) {
-                if (++crouchTicks >= 12) {
-                    petFox.setCrouching(false);
-                    org.bukkit.util.Vector direction = victim.getLocation().toVector()
-                            .subtract(petFox.getLocation().toVector()).normalize();
-                    direction.multiply(0.85).setY(0.48);
-                    petFox.setVelocity(direction);
-                    leapCooldown = 35;
-                    crouchTicks = 0;
-                } else {
-                    petFox.setCrouching(true);
-                    fox.getNavigation().stop();
-                }
-            } else {
-                petFox.setCrouching(false);
-                crouchTicks = 0;
-                fox.getNavigation().moveTo(victim.getLocation().getX(), victim.getLocation().getY(), victim.getLocation().getZ(), 1.3);
-            }
-            if (distance < 3.0 && cooldown == 0) {
-                victim.damage(2.0, (Fox) fox.getBukkitEntity());
-                cooldown = 20;
-            }
-        }
     }
 
     void sit(Fox fox, Pet pet, boolean value) {
@@ -220,8 +153,6 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
         if (held != null && !held.getType().isAir()) fox.getWorld().dropItemNaturally(fox.getLocation(), held.clone());
         fox.remove();
         wolfGoalsInstalled.remove(id);
-        combatTargets.remove(id);
-        combatExpires.remove(id);
         eatingUntil.remove(id);
         owners.remove(id);
         pet.fox = null;
@@ -345,13 +276,11 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
     void directFoxAttack(Player owner, LivingEntity target) {
         if (target instanceof Player || target instanceof Fox || !target.isValid() || target.isDead()) return;
         Pet pet = pets.get(owner.getUniqueId());
-        if (pet == null || pet.stay || !pet.combat) return;
+        if (pet == null || pet.stay) return;
         Fox fox = find(pet, false);
         if (fox == null || fox.getWorld() != target.getWorld()
                 || fox.getLocation().distanceSquared(target.getLocation()) > 16 * 16) return;
-        combatTargets.put(fox.getUniqueId(), target.getUniqueId());
-        combatExpires.put(fox.getUniqueId(), ticks + 200);
-        // Do not set the vanilla target: only the time-limited owner combat goal may attack.
+        fox.setTarget(target);
     }
     @EventHandler public void onInteract(PlayerInteractEntityEvent e) {
         if (e.getHand() != EquipmentSlot.HAND) return;
