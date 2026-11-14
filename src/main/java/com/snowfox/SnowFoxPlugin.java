@@ -548,6 +548,15 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             }
             case "despawn" -> despawn(p, pet, fox);
             case "drop" -> dropHeldItem(p, fox);
+            case "attackstyle" -> {
+                if (args.length < 2 || (!args[1].equalsIgnoreCase("wolf") && !args[1].equalsIgnoreCase("fox"))) {
+                    tell(p, "&cUsage: /snowfox attackstyle <wolf|fox>"); break;
+                }
+                attackStyle = args[1].toLowerCase(Locale.ROOT);
+                getConfig().set("combat.attack-style", attackStyle);
+                saveConfig();
+                tell(p, "&aAttack style set to " + attackStyle + ".");
+            }
             case "grow" -> {
                 if (pet == null || pet.fox == null) { tell(p, "&cSummon your fox first."); break; }
                 String choice = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : (pet.aging ? "off" : "on");
@@ -643,9 +652,11 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     }
     @Override public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (command.getName().equalsIgnoreCase("snowfox") && args.length == 1)
-            return (sender.hasPermission("snowfox.admin") ? List.of("summon","despawn","grow","drop","tp","stay","messages","rename","particles","fix","trust","adopt","reset","reload") : List.of("summon","despawn","grow","drop","tp","stay","messages","rename","particles","fix","trust","adopt","reset")).stream().filter(s -> s.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
+            return (sender.hasPermission("snowfox.admin") ? List.of("summon","despawn","grow","attackstyle","drop","tp","stay","messages","rename","particles","fix","trust","adopt","reset","reload") : List.of("summon","despawn","grow","attackstyle","drop","tp","stay","messages","rename","particles","fix","trust","adopt","reset")).stream().filter(s -> s.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
         if (command.getName().equalsIgnoreCase("snowfox") && args.length == 2 && args[0].equalsIgnoreCase("summon"))
             return List.of("snow", "red").stream().filter(v -> v.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
+        if (command.getName().equalsIgnoreCase("snowfox") && args.length == 2 && args[0].equalsIgnoreCase("attackstyle"))
+            return List.of("wolf", "fox").stream().filter(v -> v.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
         if (command.getName().equalsIgnoreCase("snowfox") && args.length == 2 && args[0].equalsIgnoreCase("grow"))
             return List.of("on", "off").stream().filter(v -> v.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
         if (command.getName().equalsIgnoreCase("snowfox") && args.length == 2 && args[0].equalsIgnoreCase("messages"))
