@@ -94,8 +94,11 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         if (wolfGoalsInstalled.get(fox.getUniqueId()) == handle) return;
         wolfGoalsInstalled.put(fox.getUniqueId(), handle);
         handle.goalSelector.removeAllGoals(goal -> true);
+        // Remove vanilla fox attack/hunt targets as well as its movement goals.
+        handle.targetSelector.removeAllGoals(goal -> true);
         handle.goalSelector.addGoal(0, new FloatGoal(handle));
         handle.goalSelector.addGoal(2, new FoxFollowOwnerGoal(handle, pet));
+        handle.goalSelector.addGoal(7, new FoxLookAtOwnerGoal(handle, pet));
         // Allow natural idle head movement while seated or near the owner.
         handle.goalSelector.addGoal(8, new RandomLookAroundGoal(handle));
     }
@@ -113,7 +116,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         @Override public boolean canUse() {
             Player p = owner();
             return !pet.stay && p != null && p.getWorld().getUID().equals(fox.getBukkitEntity().getWorld().getUID())
-                    && fox.distanceToSqr(((CraftPlayer) p).getHandle()) > 9.0;
+                    && fox.distanceToSqr(((CraftPlayer) p).getHandle()) > 100.0;
         }
         @Override public boolean canContinueToUse() {
             Player p = owner();
@@ -131,6 +134,27 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 recalc = 10;
                 fox.getNavigation().moveTo(target, 1.15);
             }
+        }
+    }
+
+    // Peaceful wolf-style attention: look at the owner while seated or resting.
+    final class FoxLookAtOwnerGoal extends Goal {
+        private final net.minecraft.world.entity.animal.fox.Fox fox;
+        private final Pet pet;
+        FoxLookAtOwnerGoal(net.minecraft.world.entity.animal.fox.Fox fox, Pet pet) {
+            this.fox = fox;
+            this.pet = pet;
+            setFlags(EnumSet.of(Goal.Flag.LOOK));
+        }
+        @Override public boolean canUse() {
+            Player p = Bukkit.getPlayer(pet.owner);
+            return p != null && p.getWorld().getUID().equals(fox.getBukkitEntity().getWorld().getUID())
+                    && fox.distanceToSqr(((CraftPlayer) p).getHandle()) < 64.0;
+        }
+        @Override public boolean canContinueToUse() { return canUse(); }
+        @Override public void tick() {
+            Player p = Bukkit.getPlayer(pet.owner);
+            if (p != null) fox.getLookControl().setLookAt(((CraftPlayer) p).getHandle(), 10.0f, fox.getMaxHeadXRot());
         }
     }
 
