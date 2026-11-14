@@ -13,6 +13,7 @@ effects:
 
 combat:
   wolf-style-attacks: false
+  attack-style: wolf # wolf keeps existing attacks; fox enables owner-directed pouncing
 
 fox:
   allow-natural-aging: false
