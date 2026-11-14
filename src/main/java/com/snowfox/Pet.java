@@ -10,7 +10,7 @@ final class Pet {
     String name = "Snowy";
     boolean stay, particles;
     boolean movementMessages = true, itemMessages = true;
-    boolean adult = false;
+    boolean aging = false;
     Fox.Type variant = Fox.Type.SNOW;
     Location last, seat, previous;
     int stuck, repath;
