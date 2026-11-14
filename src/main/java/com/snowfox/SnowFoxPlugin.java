@@ -461,7 +461,27 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         Pet pet = pets.get(p.getUniqueId());
         Fox fox = find(pet, true);
         switch (action) {
-            case "summon" -> summon(p);
+            case "summon" -> {
+                String requested = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "snow";
+                if (!requested.equals("snow") && !requested.equals("red")) {
+                    tell(p, "&cUsage: /snowfox summon [snow|red]"); break;
+                }
+                if (pet != null && pet.fox != null && pet.variant != (requested.equals("red") ? Fox.Type.RED : Fox.Type.SNOW)) {
+                    tell(p, "&cDespawn your current fox first with /snowfox despawn."); break;
+                }
+                summon(p, requested.equals("red") ? Fox.Type.RED : Fox.Type.SNOW);
+            }
+            case "despawn" -> despawn(p, pet, fox);
+            case "drop" -> dropHeldItem(p, fox);
+            case "grow" -> {
+                if (pet == null || pet.fox == null) { tell(p, "&cSummon your fox first."); break; }
+                String age = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : (pet.adult ? "baby" : "adult");
+                if (!age.equals("adult") && !age.equals("baby")) { tell(p, "&cUsage: /snowfox grow [adult|baby]"); break; }
+                pet.adult = age.equals("adult");
+                if (fox != null) { fox.setAge(pet.adult ? 0 : -24000); fox.setAgeLock(true); }
+                save();
+                tell(p, pet.adult ? "&aYour fox is now an adult!" : "&aYour fox is now a baby!");
+            }
             case "tp" -> {
                 if (fox == null) { tell(p, "&cFox unavailable."); break; }
                 fox.teleport(p.getLocation()); sit(fox, pet, false); tell(p, "&aSnowy teleported!");
@@ -503,6 +523,18 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 if (fox != null) fox.setCustomName(pet.name);
                 save(); tell(p, "&aRenamed to &r" + pet.name);
             }
+            case "particleamount" -> {
+                if (args.length < 2) { tell(p, "&eCurrent particle amount: &f" + particleAmount); break; }
+                if (!p.hasPermission("snowfox.admin")) { tell(p, "&cYou need snowfox.admin permission."); break; }
+                try {
+                    int amount = Integer.parseInt(args[1]);
+                    if (amount < 0 || amount > 100) { tell(p, "&cChoose 0-100."); break; }
+                    getConfig().set("effects.snowflake-particle-amount", amount);
+                    saveConfig();
+                    loadSettings();
+                    tell(p, "&aParticle amount set to " + amount + ".");
+                } catch (NumberFormatException ex) { tell(p, "&cEnter a whole number from 0-100."); }
+            }
             case "particles" -> {
                 if (pet == null) { tell(p, "&cSummon first."); break; }
                 pet.particles = !pet.particles; save();
@@ -542,13 +574,17 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 owners.remove(pet.fox); pet.fox = null; pet.stay = false; pet.seat = null;
                 save(); tell(p, "&aRegistration reset; name and particles preserved.");
             }
-            default -> tell(p, "&f/snowfox summon, tp, stay, messages, rename <name>, particles, fix, trust, adopt, reset, reload");
+            default -> tell(p, "&f/snowfox summon [snow|red], despawn, grow [adult|baby], drop, particles, particleamount <0-100>, tp, stay, messages, rename <name>, fix, trust, adopt, reset, reload");
         }
         return true;
     }
     @Override public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (command.getName().equalsIgnoreCase("snowfox") && args.length == 1)
-            return (sender.hasPermission("snowfox.admin") ? List.of("summon","tp","stay","messages","rename","particles","fix","trust","adopt","reset","reload") : List.of("summon","tp","stay","messages","rename","particles","fix","trust","adopt","reset")).stream().filter(s -> s.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
+            return (sender.hasPermission("snowfox.admin") ? List.of("summon","despawn","grow","drop","particleamount","tp","stay","messages","rename","particles","fix","trust","adopt","reset","reload") : List.of("summon","despawn","grow","drop","particleamount","tp","stay","messages","rename","particles","fix","trust","adopt","reset")).stream().filter(s -> s.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
+        if (command.getName().equalsIgnoreCase("snowfox") && args.length == 2 && args[0].equalsIgnoreCase("summon"))
+            return List.of("snow", "red").stream().filter(v -> v.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
+        if (command.getName().equalsIgnoreCase("snowfox") && args.length == 2 && args[0].equalsIgnoreCase("grow"))
+            return List.of("adult", "baby").stream().filter(v -> v.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
         if (command.getName().equalsIgnoreCase("snowfox") && args.length == 2 && args[0].equalsIgnoreCase("messages"))
             return List.of("movement", "items", "all").stream().filter(s -> s.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
         if (command.getName().equalsIgnoreCase("snowfox") && args.length == 3 && args[0].equalsIgnoreCase("messages"))
