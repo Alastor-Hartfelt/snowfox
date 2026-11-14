@@ -30,7 +30,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         String name = "Snowy";
         boolean stay, particles;
         boolean movementMessages = true, itemMessages = true;
-        boolean adult = false;
+        boolean aging = false;
         Fox.Type variant = Fox.Type.SNOW;
         Location last, seat, previous;
         int stuck, repath;
@@ -601,7 +601,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 String fox = y.getString("pets." + key + ".fox");
                 if (fox != null) pet.fox = UUID.fromString(fox);
                 pet.name = y.getString("pets." + key + ".name", "Snowy");
-                pet.adult = y.getBoolean("pets." + key + ".adult", false);
+                pet.aging = y.getBoolean("pets." + key + ".aging", false);
                 try { pet.variant = Fox.Type.valueOf(y.getString("pets." + key + ".variant", "SNOW").toUpperCase(Locale.ROOT)); }
                 catch (IllegalArgumentException ignored) { pet.variant = Fox.Type.SNOW; }
                 pet.stay = y.getBoolean("pets." + key + ".stay");
@@ -621,7 +621,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             String path = "pets." + pet.owner;
             y.set(path + ".fox", pet.fox == null ? null : pet.fox.toString());
             y.set(path + ".name", pet.name);
-            y.set(path + ".adult", pet.adult);
+            y.set(path + ".aging", pet.aging);
             y.set(path + ".variant", pet.variant.name());
             y.set(path + ".stay", pet.stay);
             y.set(path + ".particles", pet.particles);
