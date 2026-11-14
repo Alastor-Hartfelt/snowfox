@@ -20,6 +20,7 @@ import org.bukkit.craftbukkit.entity.CraftFox;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
+import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 
 public final class SnowFoxPlugin extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
     static final UUID ORIGINAL = UUID.fromString("3c2db120-d8f9-3718-bdc3-45e02d25bb6b");
@@ -41,7 +42,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     long ticks;
     NamespacedKey petKey;
     final Map<UUID, Long> eatingUntil = new HashMap<>();
-    final Set<UUID> wolfGoalsInstalled = new HashSet<>();
+    final Map<UUID, net.minecraft.world.entity.animal.fox.Fox> wolfGoalsInstalled = new HashMap<>();
 
     @Override public void onEnable() {
         getDataFolder().mkdirs();
@@ -81,17 +82,22 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         fox.setCustomNameVisible(true);
         fox.setTarget(null);
         installWolfGoals(fox, pet);
-        fox.setAI(!pet.stay && Bukkit.getPlayer(pet.owner) != null);
+        // Keep AI and gravity enabled while seated; the follow goal respects pet.stay.
+        fox.setAI(true);
+        fox.setGravity(true);
         Player p = Bukkit.getPlayer(pet.owner);
         if (p != null) fox.setFirstTrustedPlayer(p);
     }
     // Paper 1.21.11 NMS: replace fox wandering/hunting goals with wolf-style owner navigation.
     void installWolfGoals(Fox fox, Pet pet) {
-        if (!wolfGoalsInstalled.add(fox.getUniqueId())) return;
         net.minecraft.world.entity.animal.fox.Fox handle = ((CraftFox) fox).getHandle();
+        if (wolfGoalsInstalled.get(fox.getUniqueId()) == handle) return;
+        wolfGoalsInstalled.put(fox.getUniqueId(), handle);
         handle.goalSelector.removeAllGoals(goal -> true);
         handle.goalSelector.addGoal(0, new FloatGoal(handle));
         handle.goalSelector.addGoal(2, new FoxFollowOwnerGoal(handle, pet));
+        // Allow natural idle head movement while seated or near the owner.
+        handle.goalSelector.addGoal(8, new RandomLookAroundGoal(handle));
     }
 
     final class FoxFollowOwnerGoal extends Goal {
@@ -134,8 +140,8 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         pet.previous = null; pet.lastGoal = null; pet.stuck = 0; pet.repath = 0;
         fox.getPathfinder().stopPathfinding();
         fox.setSitting(value);
-        fox.setAI(!value);
-        if (value) fox.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+        fox.setAI(true);
+        fox.setGravity(true);
         save();
     }
     void summon(Player p) {
@@ -167,8 +173,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             if (owner == null || pet.stay) {
                 fox.getPathfinder().stopPathfinding();
                 fox.setSitting(true);
-                if (pet.stay && pet.seat != null && pet.seat.getWorld() == fox.getWorld()
-                        && pet.seat.distanceSquared(fox.getLocation()) > 0.25) fox.teleport(pet.seat);
+                // Do not teleport to the original seat: the fox must fall naturally if the floor disappears.
             } else {
                 fox.setSitting(false);
                 if (owner.getWorld() != fox.getWorld()
