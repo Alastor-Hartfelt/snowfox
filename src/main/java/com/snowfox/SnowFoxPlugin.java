@@ -566,6 +566,9 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 String fox = y.getString("pets." + key + ".fox");
                 if (fox != null) pet.fox = UUID.fromString(fox);
                 pet.name = y.getString("pets." + key + ".name", "Snowy");
+                pet.adult = y.getBoolean("pets." + key + ".adult", false);
+                try { pet.variant = Fox.Type.valueOf(y.getString("pets." + key + ".variant", "SNOW").toUpperCase(Locale.ROOT)); }
+                catch (IllegalArgumentException ignored) { pet.variant = Fox.Type.SNOW; }
                 pet.stay = y.getBoolean("pets." + key + ".stay");
                 pet.particles = y.getBoolean("pets." + key + ".particles");
                 pet.movementMessages = y.getBoolean("pets." + key + ".messages.movement", true);
@@ -583,6 +586,8 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             String path = "pets." + pet.owner;
             y.set(path + ".fox", pet.fox == null ? null : pet.fox.toString());
             y.set(path + ".name", pet.name);
+            y.set(path + ".adult", pet.adult);
+            y.set(path + ".variant", pet.variant.name());
             y.set(path + ".stay", pet.stay);
             y.set(path + ".particles", pet.particles);
             y.set(path + ".messages.movement", pet.movementMessages);
