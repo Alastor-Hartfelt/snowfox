@@ -31,25 +31,8 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     double followStart = 4.0, followStop = 2.0, followSpeed = 1.15, teleportDistance = 24.0;
     int followRepathTicks = 10, stuckCheckTicks = 40, stuckChecksBeforeTeleport = 4;
     boolean snowflakeParticlesEnabled = true;
-    void loadSettings() {
-        reloadConfig();
-        followStop = bounded("following.stop-distance", 2.0, 0.5, 12.0);
-        followStart = bounded("following.start-distance", 4.0, followStop + 0.5, 24.0);
-        followSpeed = bounded("following.speed", 1.15, 0.1, 3.0);
-        teleportDistance = bounded("following.teleport-distance", 24.0, followStart + 1.0, 128.0);
-        followRepathTicks = (int) bounded("following.repath-ticks", 10, 1, 100);
-        stuckCheckTicks = (int) bounded("following.stuck-check-ticks", 40, 5, 200);
-        stuckChecksBeforeTeleport = (int) bounded("following.stuck-checks-before-teleport", 4, 1, 20);
-        snowflakeParticlesEnabled = getConfig().getBoolean("effects.allow-snowflake-particles", true);
-    }
-    double bounded(String key, double fallback, double min, double max) {
-        double value = getConfig().getDouble(key, fallback);
-        if (!Double.isFinite(value) || value < min || value > max) {
-            getLogger().warning("Invalid config value for " + key + "; using " + fallback);
-            return fallback;
-        }
-        return value;
-    }
+    final SnowFoxSettings settings = new SnowFoxSettings(this);
+    void loadSettings() { settings.loadSettings(); }
     long ticks;
     NamespacedKey petKey;
     final Map<UUID, Long> eatingUntil = new HashMap<>();
