@@ -98,7 +98,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         if (wolfGoalsInstalled.get(fox.getUniqueId()) == handle) return;
         wolfGoalsInstalled.put(fox.getUniqueId(), handle);
         handle.goalSelector.addGoal(0, new FoxStayGoal(handle, pet));
-        handle.goalSelector.addGoal(9, new FoxFollowOwnerGoal(handle, pet));
+        handle.goalSelector.addGoal(4, new FoxFollowOwnerGoal(handle, pet));
         handle.goalSelector.addGoal(7, new FoxLookAtOwnerGoal(handle, pet));
         handle.goalSelector.addGoal(8, new RandomLookAroundGoal(handle));
     }
@@ -137,7 +137,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         @Override public boolean canUse() {
             Player p = owner();
             return !pet.stay && fox.getTarget() == null && p != null && p.getWorld().getUID().equals(fox.getBukkitEntity().getWorld().getUID())
-                    && fox.distanceToSqr(((CraftPlayer) p).getHandle()) > 100.0;
+                    && fox.distanceToSqr(((CraftPlayer) p).getHandle()) > 16.0;
         }
         @Override public boolean canContinueToUse() {
             Player p = owner();
