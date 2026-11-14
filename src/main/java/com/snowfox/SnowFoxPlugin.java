@@ -123,6 +123,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
         private int cooldown, hitCooldown, windup;
         private boolean diving;
         private boolean airborne;
+        private boolean struckThisPounce;
         private int flightTicks;
         FoxPounceGoal(net.minecraft.world.entity.animal.fox.Fox fox, Pet pet) {
             this.fox = fox;
@@ -147,6 +148,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
             windup = 0;
             diving = false;
             airborne = false;
+            struckThisPounce = false;
             flightTicks = 0;
         }
         @Override public void tick() {
@@ -172,6 +174,14 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
                     bukkitFox.setVelocity(new org.bukkit.util.Vector(horizontal.getX(),
                             Math.max(-1.25, motion.getY() - 0.22), horizontal.getZ()));
                 }
+                // Apply damage on the actual descending collision, once per leap.
+                if (diving && !struckThisPounce && hitCooldown == 0
+                        && bukkitFox.getBoundingBox().expand(0.25, 0.3, 0.25)
+                                .overlaps(target.getBoundingBox())) {
+                    target.damage(2.0, bukkitFox);
+                    struckThisPounce = true;
+                    hitCooldown = 20;
+                }
                 if (fox.onGround() && flightTicks > 3) {
                     airborne = false;
                     diving = false;
@@ -187,6 +197,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
                         org.bukkit.util.Vector launch = toTarget.normalize().multiply(0.42).setY(0.92);
                         bukkitFox.setVelocity(launch);
                         airborne = true;
+                        struckThisPounce = false;
                         diving = false;
                         flightTicks = 0;
                         cooldown = 45;
@@ -197,10 +208,6 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener {
                 windup = 0;
                 fox.getNavigation().moveTo(target.getLocation().getX(),
                         target.getLocation().getY(), target.getLocation().getZ(), 1.3);
-            }
-            if (distance < 3 && hitCooldown == 0) {
-                target.damage(2.0, bukkitFox);
-                hitCooldown = 20;
             }
         }
     }
