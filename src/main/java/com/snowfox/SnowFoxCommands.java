@@ -38,19 +38,6 @@ final class SnowFoxCommands implements CommandExecutor, TabCompleter {
             }
             case "despawn" -> plugin.despawn(p, pet, fox);
             case "drop" -> plugin.dropHeldItem(p, fox);
-            case "combat" -> {
-                if (pet == null || pet.fox == null) { plugin.tell(p, "&cSummon your fox first."); break; }
-                String choice = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : (pet.combat ? "off" : "on");
-                if (!choice.equals("on") && !choice.equals("off")) { plugin.tell(p, "&cUsage: /snowfox combat [on|off]"); break; }
-                pet.combat = choice.equals("on");
-                if (!pet.combat && fox != null) {
-                    plugin.combatTargets.remove(fox.getUniqueId());
-                    plugin.combatExpires.remove(fox.getUniqueId());
-                    fox.setTarget(null);
-                }
-                plugin.save();
-                plugin.tell(p, pet.combat ? "&aFox defense enabled!" : "&eFox defense disabled.");
-            }
             case "grow" -> {
                 if (pet == null || pet.fox == null) { plugin.tell(p, "&cSummon your fox first."); break; }
                 String choice = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : (pet.aging ? "off" : "on");
@@ -140,17 +127,15 @@ final class SnowFoxCommands implements CommandExecutor, TabCompleter {
                 plugin.owners.remove(pet.fox); pet.fox = null; pet.stay = false; pet.seat = null;
                 plugin.save(); plugin.tell(p, "&aRegistration reset; name and particles preserved.");
             }
-            default -> plugin.tell(p, "&f/snowfox summon [snow|red], despawn, grow [on|off], combat [on|off], drop, particles, tp, stay, messages, rename <name>, fix, trust, adopt, reset, reload");
+            default -> plugin.tell(p, "&f/snowfox summon [snow|red], despawn, grow [on|off], drop, particles, tp, stay, messages, rename <name>, fix, trust, adopt, reset, reload");
         }
         return true;
     }
     @Override public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (command.getName().equalsIgnoreCase("snowfox") && args.length == 1)
-            return (sender.hasPermission("snowfox.admin") ? List.of("summon","despawn","grow","combat","drop","tp","stay","messages","rename","particles","fix","trust","adopt","reset","reload") : List.of("summon","despawn","grow","combat","drop","tp","stay","messages","rename","particles","fix","trust","adopt","reset")).stream().filter(s -> s.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
+            return (sender.hasPermission("snowfox.admin") ? List.of("summon","despawn","grow","drop","tp","stay","messages","rename","particles","fix","trust","adopt","reset","reload") : List.of("summon","despawn","grow","drop","tp","stay","messages","rename","particles","fix","trust","adopt","reset")).stream().filter(s -> s.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
         if (command.getName().equalsIgnoreCase("snowfox") && args.length == 2 && args[0].equalsIgnoreCase("summon"))
             return List.of("snow", "red").stream().filter(v -> v.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
-        if (command.getName().equalsIgnoreCase("snowfox") && args.length == 2 && args[0].equalsIgnoreCase("combat"))
-            return List.of("on", "off").stream().filter(v -> v.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
         if (command.getName().equalsIgnoreCase("snowfox") && args.length == 2 && args[0].equalsIgnoreCase("grow"))
             return List.of("on", "off").stream().filter(v -> v.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
         if (command.getName().equalsIgnoreCase("snowfox") && args.length == 2 && args[0].equalsIgnoreCase("messages"))
