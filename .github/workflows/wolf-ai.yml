@@ -1,7 +1,7 @@
-name: Build Experimental Wolf AI
+name: Build SnowFox
 on:
   push:
-    branches: [wolf-ai-experimental]
+    branches: [main]
   workflow_dispatch:
 jobs:
   build:
@@ -15,10 +15,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.2.1'
-      - name: Build experimental plugin
+      - name: Build SnowFox plugin
         run: gradle build --stacktrace
       - uses: actions/upload-artifact@v4
         with:
-          name: SnowFox-wolf-ai-experimental
+          name: SnowFox
           path: build/libs/*.jar
           if-no-files-found: error
