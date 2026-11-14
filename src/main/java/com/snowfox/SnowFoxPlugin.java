@@ -88,24 +88,18 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         fox.setCustomName(pet.name);
         fox.setCustomNameVisible(true);
         installWolfGoals(fox, pet);
-        // Keep AI and gravity enabled while seated; the follow goal respects pet.stay.
         fox.setAI(true);
         fox.setGravity(true);
         Player p = Bukkit.getPlayer(pet.owner);
         if (p != null) fox.setFirstTrustedPlayer(p);
     }
-    // Paper 1.21.11 NMS: replace fox wandering/hunting goals with wolf-style owner navigation.
     void installWolfGoals(Fox fox, Pet pet) {
         net.minecraft.world.entity.animal.fox.Fox handle = ((CraftFox) fox).getHandle();
         if (wolfGoalsInstalled.get(fox.getUniqueId()) == handle) return;
         wolfGoalsInstalled.put(fox.getUniqueId(), handle);
-        // Preserve vanilla fox prey selection, stalking, pouncing, and eating goals.
-        // The companion goals take precedence only when Snowy isn't hunting.
         handle.goalSelector.addGoal(0, new FoxStayGoal(handle, pet));
-        // Follow only when vanilla hunting goals are not using movement.
         handle.goalSelector.addGoal(9, new FoxFollowOwnerGoal(handle, pet));
         handle.goalSelector.addGoal(7, new FoxLookAtOwnerGoal(handle, pet));
-        // Allow natural idle head movement while seated or near the owner.
         handle.goalSelector.addGoal(8, new RandomLookAroundGoal(handle));
     }
 
@@ -124,7 +118,6 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         private void holdPosition() {
             fox.getNavigation().stop();
             fox.setTarget(null);
-            // Clear leftover movement from rapidly switching between follow and sit.
             var motion = fox.getDeltaMovement();
             fox.setDeltaMovement(0.0, motion.y, 0.0);
             fox.getMoveControl().setWantedPosition(fox.getX(), fox.getY(), fox.getZ(), 0.0);
@@ -166,7 +159,6 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         }
     }
 
-    // Peaceful wolf-style attention: look at the owner while seated or resting.
     final class FoxLookAtOwnerGoal extends Goal {
         private final net.minecraft.world.entity.animal.fox.Fox fox;
         private final Pet pet;
@@ -179,7 +171,6 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             Player p = Bukkit.getPlayer(pet.owner);
             if (p == null || !p.getWorld().getUID().equals(fox.getBukkitEntity().getWorld().getUID())
                     || fox.distanceToSqr(((CraftPlayer) p).getHandle()) >= 64.0) return false;
-            // Never override prey-facing while hunting or preparing a pounce.
             if (!pet.stay && (fox.getTarget() != null || preyNearby())) return false;
             return true;
         }
@@ -243,7 +234,6 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 var motion = ((CraftFox) fox).getHandle().getDeltaMovement();
                 ((CraftFox) fox).getHandle().setDeltaMovement(0.0, motion.y, 0.0);
                 fox.setSitting(true);
-                // Do not teleport to the original seat: the fox must fall naturally if the floor disappears.
             } else {
                 fox.setSitting(false);
                 if (owner.getWorld() != fox.getWorld()
@@ -305,7 +295,6 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     }
     @EventHandler public void onPickup(EntityPickupItemEvent e) {
         if (!(e.getEntity() instanceof Fox fox) || !isManaged(fox)) return;
-        // Keep owner-to-mouth swapping exclusive, but allow natural chicken pickups.
         if (dropped.containsKey(e.getItem().getUniqueId())) { e.setCancelled(true); return; }
         if (e.getItem().getItemStack().getType() != Material.CHICKEN
                 && e.getItem().getItemStack().getType() != Material.COOKED_CHICKEN) e.setCancelled(true);
@@ -350,7 +339,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     }
     void setEating(Fox fox, boolean eating) {
         try { fox.getClass().getMethod("setEating", boolean.class).invoke(fox, eating); }
-        catch (ReflectiveOperationException ignored) { /* Animation unavailable on this server build. */ }
+        catch (ReflectiveOperationException ignored) { }
     }
     void eatChicken(Fox fox, Pet pet) {
         if (!pet.stay) return;
