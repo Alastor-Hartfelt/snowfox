@@ -109,96 +109,10 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         net.minecraft.world.entity.animal.fox.Fox handle = ((CraftFox) fox).getHandle();
         if (wolfGoalsInstalled.get(fox.getUniqueId()) == handle) return;
         wolfGoalsInstalled.put(fox.getUniqueId(), handle);
-        handle.goalSelector.addGoal(0, new FoxStayGoal(handle, pet));
-        handle.goalSelector.addGoal(4, new FoxFollowOwnerGoal(handle, pet));
-        handle.goalSelector.addGoal(7, new FoxLookAtOwnerGoal(handle, pet));
+        handle.goalSelector.addGoal(0, new FoxStayGoal(this, handle, pet));
+        handle.goalSelector.addGoal(4, new FoxFollowOwnerGoal(this, handle, pet));
+        handle.goalSelector.addGoal(7, new FoxLookAtOwnerGoal(this, handle, pet));
         handle.goalSelector.addGoal(8, new RandomLookAroundGoal(handle));
-    }
-
-    final class FoxStayGoal extends Goal {
-        private final net.minecraft.world.entity.animal.fox.Fox fox;
-        private final Pet pet;
-        FoxStayGoal(net.minecraft.world.entity.animal.fox.Fox fox, Pet pet) {
-            this.fox = fox;
-            this.pet = pet;
-            setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.JUMP, Goal.Flag.TARGET));
-        }
-        @Override public boolean canUse() { return pet.stay || Bukkit.getPlayer(pet.owner) == null; }
-        @Override public boolean canContinueToUse() { return canUse(); }
-        @Override public void start() { holdPosition(); }
-        @Override public void tick() { holdPosition(); }
-        private void holdPosition() {
-            fox.getNavigation().stop();
-            fox.setTarget(null);
-            var motion = fox.getDeltaMovement();
-            fox.setDeltaMovement(0.0, motion.y, 0.0);
-            fox.getMoveControl().setWantedPosition(fox.getX(), fox.getY(), fox.getZ(), 0.0);
-        }
-    }
-
-    final class FoxFollowOwnerGoal extends Goal {
-        private final net.minecraft.world.entity.animal.fox.Fox fox;
-        private final Pet pet;
-        private int recalc;
-        FoxFollowOwnerGoal(net.minecraft.world.entity.animal.fox.Fox fox, Pet pet) {
-            this.fox = fox;
-            this.pet = pet;
-            setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
-        }
-        private Player owner() { return Bukkit.getPlayer(pet.owner); }
-        @Override public boolean canUse() {
-            Player p = owner();
-            return !pet.stay && fox.getTarget() == null && p != null && p.getWorld().getUID().equals(fox.getBukkitEntity().getWorld().getUID())
-                    && fox.distanceToSqr(((CraftPlayer) p).getHandle()) > followStart * followStart;
-        }
-        @Override public boolean canContinueToUse() {
-            Player p = owner();
-            return !pet.stay && fox.getTarget() == null && p != null && p.getWorld().getUID().equals(fox.getBukkitEntity().getWorld().getUID())
-                    && fox.distanceToSqr(((CraftPlayer) p).getHandle()) > followStop * followStop;
-        }
-        @Override public void start() { recalc = 0; }
-        @Override public void stop() { if (fox.getTarget() == null) fox.getNavigation().stop(); }
-        @Override public void tick() {
-            Player p = owner();
-            if (p == null || pet.stay) { fox.getNavigation().stop(); return; }
-            if (fox.getTarget() != null) return;
-            var target = ((CraftPlayer) p).getHandle();
-            fox.getLookControl().setLookAt(target, 10.0f, fox.getMaxHeadXRot());
-            if (--recalc <= 0) {
-                recalc = followRepathTicks;
-                fox.getNavigation().moveTo(target, followSpeed);
-            }
-        }
-    }
-
-    final class FoxLookAtOwnerGoal extends Goal {
-        private final net.minecraft.world.entity.animal.fox.Fox fox;
-        private final Pet pet;
-        FoxLookAtOwnerGoal(net.minecraft.world.entity.animal.fox.Fox fox, Pet pet) {
-            this.fox = fox;
-            this.pet = pet;
-            setFlags(EnumSet.of(Goal.Flag.LOOK));
-        }
-        @Override public boolean canUse() {
-            Player p = Bukkit.getPlayer(pet.owner);
-            if (p == null || !p.getWorld().getUID().equals(fox.getBukkitEntity().getWorld().getUID())
-                    || fox.distanceToSqr(((CraftPlayer) p).getHandle()) >= 64.0) return false;
-            if (!pet.stay && (fox.getTarget() != null || preyNearby())) return false;
-            return true;
-        }
-        private boolean preyNearby() {
-            org.bukkit.entity.Entity bukkitFox = fox.getBukkitEntity();
-            for (org.bukkit.entity.Entity nearby : bukkitFox.getNearbyEntities(10, 5, 10)) {
-                if (nearby instanceof org.bukkit.entity.Chicken && nearby.isValid()) return true;
-            }
-            return false;
-        }
-        @Override public boolean canContinueToUse() { return canUse(); }
-        @Override public void tick() {
-            if (!canUse()) return;
-            Player p = Bukkit.getPlayer(pet.owner);
-            if (p != null) fox.getLookControl().setLookAt(((CraftPlayer) p).getHandle(), 10.0f, fox.getMaxHeadXRot());
-        }
     }
 
     void sit(Fox fox, Pet pet, boolean value) {
