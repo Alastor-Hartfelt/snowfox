@@ -22,7 +22,7 @@ import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 
-public final class SnowFoxPlugin extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
+public final class SnowFoxPlugin extends JavaPlugin implements Listener {
     static final UUID ORIGINAL = UUID.fromString("3c2db120-d8f9-3718-bdc3-45e02d25bb6b");
     final Map<UUID, Pet> pets = new HashMap<>();
     final Map<UUID, UUID> owners = new HashMap<>();
@@ -33,6 +33,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     boolean snowflakeParticlesEnabled = true;
     final SnowFoxSettings settings = new SnowFoxSettings(this);
     final PetStorage storage = new PetStorage(this);
+    final SnowFoxCommands commands = new SnowFoxCommands(this);
     void loadSettings() { settings.loadSettings(); }
     void load() { storage.load(); }
     void save() { storage.save(); }
@@ -51,7 +52,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         Bukkit.getPluginManager().registerEvents(this, this);
         for (String name : List.of("snowfox","snowfoxrename","snowfoxstay","snowfoxadopt","snowfoxfix","snowfoxtrust","snowfoxreset")) {
             PluginCommand command = getCommand(name);
-            if (command != null) { command.setExecutor(this); command.setTabCompleter(this); }
+            if (command != null) { command.setExecutor(commands); command.setTabCompleter(commands); }
         }
         Bukkit.getScheduler().runTaskTimer(this, this::tick, 5, 5);
         Bukkit.getScheduler().runTaskTimer(this, this::save, 1200, 1200);
@@ -274,117 +275,6 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             if (pet != null) pet.fox = null;
             save();
         }
-    }
-    @Override public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (command.getName().equalsIgnoreCase("snowfox") && args.length > 0 && args[0].equalsIgnoreCase("reload")) {
-            if (!sender.hasPermission("snowfox.admin")) {
-                sender.sendMessage(ChatColor.RED + "You need snowfox.admin permission.");
-                return true;
-            }
-            loadSettings();
-            sender.sendMessage(ChatColor.AQUA + "SnowFox config.yml reloaded. Existing pets and preferences were preserved.");
-            return true;
-        }
-        if (!(sender instanceof Player p)) { sender.sendMessage("Players only."); return true; }
-        if (!allowed(p)) { tell(p, "&cYou need snowfox.use permission."); return true; }
-        String cmd = command.getName().toLowerCase(Locale.ROOT);
-        String action = cmd.equals("snowfox") ? (args.length == 0 ? "summon" : args[0].toLowerCase(Locale.ROOT)) : cmd.substring(7);
-        Pet pet = pets.get(p.getUniqueId());
-        Fox fox = find(pet, true);
-        switch (action) {
-            case "summon" -> summon(p);
-            case "tp" -> {
-                if (fox == null) { tell(p, "&cFox unavailable."); break; }
-                fox.teleport(p.getLocation()); sit(fox, pet, false); tell(p, "&aSnowy teleported!");
-            }
-            case "stay" -> {
-                if (fox == null) { tell(p, "&cSummon your fox first."); break; }
-                sit(fox, pet, !pet.stay); notifyMovement(p, pet, pet.stay ? "&eSnowy is sitting!" : "&aSnowy is following!");
-            }
-            case "messages" -> {
-                Pet settings = pets.computeIfAbsent(p.getUniqueId(), Pet::new);
-                int offset = cmd.equals("snowfox") ? 1 : 0;
-                if (args.length <= offset) {
-                    tell(p, "&eChat messages: &fmovement=" + (settings.movementMessages ? "on" : "off")
-                            + "&f, items=" + (settings.itemMessages ? "on" : "off"));
-                    tell(p, "&7Usage: /snowfox messages <movement|items|all> <on|off|toggle>");
-                    break;
-                }
-                String category = args[offset].toLowerCase(Locale.ROOT);
-                if (!List.of("movement", "items", "all").contains(category)) {
-                    tell(p, "&cChoose movement, items, or all."); break;
-                }
-                String choice = args.length > offset + 1 ? args[offset + 1].toLowerCase(Locale.ROOT) : "toggle";
-                if (!List.of("on", "off", "toggle").contains(choice)) {
-                    tell(p, "&cChoose on, off, or toggle."); break;
-                }
-                if (category.equals("movement") || category.equals("all"))
-                    settings.movementMessages = choice.equals("toggle") ? !settings.movementMessages : choice.equals("on");
-                if (category.equals("items") || category.equals("all"))
-                    settings.itemMessages = choice.equals("toggle") ? !settings.itemMessages : choice.equals("on");
-                save();
-                tell(p, "&aMessages updated: &fmovement=" + (settings.movementMessages ? "on" : "off")
-                        + "&f, items=" + (settings.itemMessages ? "on" : "off"));
-            }
-            case "rename" -> {
-                String name = cmd.equals("snowfox") ? (args.length > 1 ? String.join(" ", Arrays.copyOfRange(args, 1, args.length)) : "") : String.join(" ", args);
-                if (name.isBlank() || name.length() > 32) { tell(p, "&cName must be 1-32 characters."); break; }
-                if (pet == null || pet.fox == null) { tell(p, "&cSummon your fox first."); break; }
-                pet.name = ChatColor.translateAlternateColorCodes('&', name);
-                if (fox != null) fox.setCustomName(pet.name);
-                save(); tell(p, "&aRenamed to &r" + pet.name);
-            }
-            case "particles" -> {
-                if (pet == null) { tell(p, "&cSummon first."); break; }
-                pet.particles = !pet.particles; save();
-                tell(p, pet.particles ? "&bSnowflakes enabled!" : "&7Snowflakes disabled.");
-            }
-            case "fix" -> {
-                if (fox == null) { tell(p, "&cFox unavailable."); break; }
-                protect(fox, pet); tell(p, "&aSnowy repaired!");
-            }
-            case "trust" -> {
-                if (fox == null) { tell(p, "&cFox unavailable."); break; }
-                tell(p, "&eYour UUID: &f" + p.getUniqueId());
-                tell(p, "&eFox trusts: &f" + fox.getFirstTrustedPlayer());
-            }
-            case "adopt" -> {
-                if (pet != null && pet.fox != null) { tell(p, "&cYou already own a fox."); break; }
-                Fox nearest = null; double best = 25;
-                for (Entity entity : p.getNearbyEntities(5, 5, 5)) {
-                    if (entity instanceof Fox candidate && !owners.containsKey(candidate.getUniqueId())
-                            && (candidate.getPersistentDataContainer().get(petKey, PersistentDataType.STRING) == null
-                                || p.getUniqueId().toString().equals(candidate.getPersistentDataContainer().get(petKey, PersistentDataType.STRING)))) {
-                        double d = candidate.getLocation().distanceSquared(p.getLocation());
-                        if (d < best) { best = d; nearest = candidate; }
-                    }
-                }
-                if (nearest == null) { tell(p, "&cNo unowned fox nearby."); break; }
-                Pet adopted = pets.computeIfAbsent(p.getUniqueId(), Pet::new);
-                adopted.fox = nearest.getUniqueId();
-                adopted.last = nearest.getLocation().clone();
-                owners.put(adopted.fox, adopted.owner);
-                protect(nearest, adopted); sit(nearest, adopted, false);
-                tell(p, "&aFox adopted!");
-            }
-            case "reset" -> {
-                if (pet == null || pet.fox == null) { tell(p, "&cNo registered fox."); break; }
-                if (fox != null) { tell(p, "&cYour fox still exists. Use /snowfox tp."); break; }
-                owners.remove(pet.fox); pet.fox = null; pet.stay = false; pet.seat = null;
-                save(); tell(p, "&aRegistration reset; name and particles preserved.");
-            }
-            default -> tell(p, "&f/snowfox summon, tp, stay, messages, rename <name>, particles, fix, trust, adopt, reset, reload");
-        }
-        return true;
-    }
-    @Override public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        if (command.getName().equalsIgnoreCase("snowfox") && args.length == 1)
-            return (sender.hasPermission("snowfox.admin") ? List.of("summon","tp","stay","messages","rename","particles","fix","trust","adopt","reset","reload") : List.of("summon","tp","stay","messages","rename","particles","fix","trust","adopt","reset")).stream().filter(s -> s.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
-        if (command.getName().equalsIgnoreCase("snowfox") && args.length == 2 && args[0].equalsIgnoreCase("messages"))
-            return List.of("movement", "items", "all").stream().filter(s -> s.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
-        if (command.getName().equalsIgnoreCase("snowfox") && args.length == 3 && args[0].equalsIgnoreCase("messages"))
-            return List.of("on", "off", "toggle").stream().filter(s -> s.startsWith(args[2].toLowerCase(Locale.ROOT))).toList();
-        return Collections.emptyList();
     }
 
 }
