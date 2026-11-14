@@ -14,6 +14,8 @@ final class SnowFoxSettings {
         plugin.stuckChecksBeforeTeleport = (int) bounded("following.stuck-checks-before-teleport", 4, 1, 20);
         plugin.snowflakeParticlesEnabled = plugin.getConfig().getBoolean("effects.allow-snowflake-particles", true);
         plugin.wolfStyleCombatEnabled = plugin.getConfig().getBoolean("combat.wolf-style-attacks", false);
+        plugin.particleAmount = Math.max(0, Math.min(100, plugin.getConfig().getInt("effects.snowflake-particle-amount", 1)));
+        plugin.defaultAdult = plugin.getConfig().getBoolean("fox.default-adult", false);
     }
     double bounded(String key, double fallback, double min, double max) {
         double value = plugin.getConfig().getDouble(key, fallback);
