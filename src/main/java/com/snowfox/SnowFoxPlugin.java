@@ -48,6 +48,9 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     int followRepathTicks = 10, stuckCheckTicks = 40, stuckChecksBeforeTeleport = 4;
     boolean snowflakeParticlesEnabled = true;
     boolean wolfStyleCombatEnabled = false;
+    String attackStyle = "wolf";
+    final Map<UUID, UUID> pounceTargets = new HashMap<>();
+    final Map<UUID, Long> pounceUntil = new HashMap<>();
     int particleAmount = 1;
     boolean defaultAging = false;
     void loadSettings() {
@@ -61,6 +64,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         stuckChecksBeforeTeleport = (int) bounded("following.stuck-checks-before-teleport", 4, 1, 20);
         snowflakeParticlesEnabled = getConfig().getBoolean("effects.allow-snowflake-particles", true);
         wolfStyleCombatEnabled = getConfig().getBoolean("combat.wolf-style-attacks", false);
+        attackStyle = getConfig().getString("combat.attack-style", "wolf").equalsIgnoreCase("fox") ? "fox" : "wolf";
         particleAmount = Math.max(0, Math.min(100, getConfig().getInt("effects.snowflake-particle-amount", 1)));
         defaultAging = getConfig().getBoolean("fox.allow-natural-aging", false);
     }
@@ -138,9 +142,67 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             }
         }
         handle.goalSelector.addGoal(0, new FoxStayGoal(handle, pet));
+        handle.goalSelector.addGoal(2, new FoxPounceGoal(handle, pet));
         handle.goalSelector.addGoal(4, new FoxFollowOwnerGoal(handle, pet));
         handle.goalSelector.addGoal(7, new LookAtPlayerGoal(handle, net.minecraft.world.entity.LivingEntity.class, 8.0F));
         handle.goalSelector.addGoal(8, new RandomLookAroundGoal(handle));
+    }
+
+    final class FoxPounceGoal extends Goal {
+        private final net.minecraft.world.entity.animal.fox.Fox fox;
+        private final Pet pet;
+        private int crouchTicks, cooldown;
+        FoxPounceGoal(net.minecraft.world.entity.animal.fox.Fox fox, Pet pet) {
+            this.fox = fox;
+            this.pet = pet;
+            setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK, Goal.Flag.JUMP));
+        }
+        private LivingEntity selectedTarget() {
+            if (!wolfStyleCombatEnabled || !"fox".equals(attackStyle) || pet.stay) return null;
+            UUID id = pounceTargets.get(fox.getUUID());
+            if (id == null || ticks >= pounceUntil.getOrDefault(fox.getUUID(), 0L)) return null;
+            Entity entity = Bukkit.getEntity(id);
+            if (!(entity instanceof LivingEntity victim) || victim instanceof Player || victim instanceof Fox
+                    || !victim.isValid() || victim.isDead() || victim.getWorld() != fox.getBukkitEntity().getWorld()
+                    || victim.getLocation().distanceSquared(fox.getBukkitEntity().getLocation()) > 256) return null;
+            return victim;
+        }
+        @Override public boolean canUse() { return selectedTarget() != null; }
+        @Override public boolean canContinueToUse() { return selectedTarget() != null; }
+        @Override public void stop() {
+            ((Fox) fox.getBukkitEntity()).setCrouching(false);
+            fox.getNavigation().stop();
+            crouchTicks = 0;
+        }
+        @Override public void tick() {
+            LivingEntity target = selectedTarget();
+            if (target == null) return;
+            Fox bukkitFox = (Fox) fox.getBukkitEntity();
+            double distance = bukkitFox.getLocation().distanceSquared(target.getLocation());
+            fox.getLookControl().setLookAt(target.getLocation().getX(), target.getEyeLocation().getY(), target.getLocation().getZ());
+            if (cooldown > 0) cooldown--;
+            if (distance > 4 && distance < 64 && fox.onGround() && cooldown == 0) {
+                fox.getNavigation().stop();
+                bukkitFox.setCrouching(true);
+                if (++crouchTicks >= 16) {
+                    bukkitFox.setCrouching(false);
+                    org.bukkit.util.Vector vector = target.getLocation().toVector().subtract(bukkitFox.getLocation().toVector());
+                    if (vector.lengthSquared() > 0.01) {
+                        bukkitFox.setVelocity(vector.normalize().multiply(0.85).setY(0.48));
+                    }
+                    crouchTicks = 0;
+                    cooldown = 35;
+                }
+            } else {
+                bukkitFox.setCrouching(false);
+                crouchTicks = 0;
+                fox.getNavigation().moveTo(target.getLocation().getX(), target.getLocation().getY(), target.getLocation().getZ(), 1.3);
+            }
+            if (distance < 3 && cooldown <= 20) {
+                target.damage(2.0, bukkitFox);
+                cooldown = 35;
+            }
+        }
     }
 
     final class FoxStayGoal extends Goal {
@@ -396,7 +458,12 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         Fox fox = find(pet, false);
         if (fox == null || fox.getWorld() != target.getWorld()
                 || fox.getLocation().distanceSquared(target.getLocation()) > 16 * 16) return;
-        fox.setTarget(target);
+        if ("fox".equals(attackStyle)) {
+            pounceTargets.put(fox.getUniqueId(), target.getUniqueId());
+            pounceUntil.put(fox.getUniqueId(), ticks + 200);
+        } else {
+            fox.setTarget(target);
+        }
     }
     @EventHandler public void onInteract(PlayerInteractEntityEvent e) {
         if (e.getHand() != EquipmentSlot.HAND) return;
