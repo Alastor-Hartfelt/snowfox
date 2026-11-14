@@ -43,6 +43,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     double followStart = 4.0, followStop = 2.0, followSpeed = 1.15, teleportDistance = 24.0;
     int followRepathTicks = 10, stuckCheckTicks = 40, stuckChecksBeforeTeleport = 4;
     boolean snowflakeParticlesEnabled = true;
+    boolean wolfStyleCombatEnabled = false;
     void loadSettings() {
         reloadConfig();
         followStop = bounded("following.stop-distance", 2.0, 0.5, 12.0);
@@ -53,6 +54,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         stuckCheckTicks = (int) bounded("following.stuck-check-ticks", 40, 5, 200);
         stuckChecksBeforeTeleport = (int) bounded("following.stuck-checks-before-teleport", 4, 1, 20);
         snowflakeParticlesEnabled = getConfig().getBoolean("effects.allow-snowflake-particles", true);
+        wolfStyleCombatEnabled = getConfig().getBoolean("combat.wolf-style-attacks", false);
     }
     double bounded(String key, double fallback, double min, double max) {
         double value = getConfig().getDouble(key, fallback);
@@ -332,6 +334,27 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                     || (pets.get(owners.get(fox.getUniqueId())) != null
                     && pets.get(owners.get(fox.getUniqueId())).stay)) e.setCancelled(true);
         }
+    }
+    @EventHandler(ignoreCancelled = true)
+    public void onWolfStyleCombat(EntityDamageByEntityEvent event) {
+        if (!wolfStyleCombatEnabled) return;
+        Entity attacker = event.getDamager();
+        if (attacker instanceof Projectile projectile && projectile.getShooter() instanceof Entity shooter) attacker = shooter;
+        if (attacker instanceof Player owner && event.getEntity() instanceof LivingEntity target) {
+            directFoxAttack(owner, target);
+        }
+        if (event.getEntity() instanceof Player owner && attacker instanceof LivingEntity target) {
+            directFoxAttack(owner, target);
+        }
+    }
+    void directFoxAttack(Player owner, LivingEntity target) {
+        if (target instanceof Player || target instanceof Fox || !target.isValid() || target.isDead()) return;
+        Pet pet = pets.get(owner.getUniqueId());
+        if (pet == null || pet.stay) return;
+        Fox fox = find(pet, false);
+        if (fox == null || fox.getWorld() != target.getWorld()
+                || fox.getLocation().distanceSquared(target.getLocation()) > 16 * 16) return;
+        fox.setTarget(target);
     }
     @EventHandler public void onInteract(PlayerInteractEntityEvent e) {
         if (e.getHand() != EquipmentSlot.HAND) return;
