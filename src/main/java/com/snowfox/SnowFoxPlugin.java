@@ -49,6 +49,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     boolean snowflakeParticlesEnabled = true;
     boolean wolfStyleCombatEnabled = false;
     String attackStyle = "wolf";
+    boolean chainPouncesEnabled = false;
     final Map<UUID, UUID> pounceTargets = new HashMap<>();
     final Map<UUID, Long> pounceUntil = new HashMap<>();
     int particleAmount = 1;
@@ -65,6 +66,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         snowflakeParticlesEnabled = getConfig().getBoolean("effects.allow-snowflake-particles", true);
         wolfStyleCombatEnabled = getConfig().getBoolean("combat.wolf-style-attacks", false);
         attackStyle = getConfig().getString("combat.attack-style", "wolf").equalsIgnoreCase("fox") ? "fox" : "wolf";
+        chainPouncesEnabled = getConfig().getBoolean("combat.chain-pounces", false);
         particleAmount = Math.max(0, Math.min(100, getConfig().getInt("effects.snowflake-particle-amount", 1)));
         defaultAging = getConfig().getBoolean("fox.allow-natural-aging", false);
     }
@@ -205,7 +207,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 highestY = Math.max(highestY, bukkitFox.getLocation().getY());
                 // A Wind Burst bounce is a new ascent, not a continuation of the dive.
                 // Re-arm only after Snowy has risen well above the previous hit.
-                if (waitingForChainRise && motion.getY() > 0.05
+                if (chainPouncesEnabled && waitingForChainRise && motion.getY() > 0.05
                         && bukkitFox.getLocation().getY() >= lastHitY + 1.25) {
                     waitingForChainRise = false;
                     struckThisPounce = false;
