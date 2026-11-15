@@ -140,12 +140,13 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         // Baby foxes should follow their player, not the vanilla nearest adult fox.
         // Remove only the vanilla parent-following goal; retain hunting and other fox AI.
         for (var wrapped : new ArrayList<>(handle.goalSelector.getAvailableGoals())) {
-            if (wrapped.getGoal() instanceof FollowParentGoal) {
+            if (wrapped.getGoal() instanceof FollowParentGoal
+                    || wrapped.getGoal() instanceof net.minecraft.world.entity.ai.goal.AvoidEntityGoal) {
                 handle.goalSelector.removeGoal(wrapped.getGoal());
             }
         }
         handle.goalSelector.addGoal(0, new FoxStayGoal(handle, pet));
-        handle.goalSelector.addGoal(2, new FoxPounceGoal(handle, pet));
+        handle.goalSelector.addGoal(1, new FoxPounceGoal(handle, pet));
         handle.goalSelector.addGoal(4, new FoxFollowOwnerGoal(handle, pet));
         handle.goalSelector.addGoal(7, new LookAtPlayerGoal(handle, net.minecraft.world.entity.LivingEntity.class, 8.0F));
         handle.goalSelector.addGoal(8, new RandomLookAroundGoal(handle));
@@ -226,13 +227,24 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 if (targetVelocity.lengthSquared() > 0.36) targetVelocity.normalize().multiply(0.6);
                 // Short lead on descent: long prediction overshoots slow targets
                 // (especially Wardens). Reduce speed as the fox closes in.
-                double leadTicks = diving ? 1.0 : 2.5;
+                ItemStack airborneItem = bukkitFox.getEquipment().getItemInMainHand();
+                int burstLevel = airborneItem.getType() == Material.MACE
+                        ? airborneItem.getEnchantmentLevel(org.bukkit.enchantments.Enchantment.WIND_BURST) : 0;
+                // Wind Burst I keeps its proven movement. II/III gain a
+                // mild gliding correction and extra horizontal braking.
+                boolean glideAssist = chainPouncesEnabled && burstLevel >= 2
+                        && waitingForChainRise == false;
+                double leadTicks = glideAssist ? (diving ? 0.65 : 1.6) : (diving ? 1.0 : 2.5);
                 org.bukkit.util.Vector predicted = target.getLocation().toVector()
                         .add(targetVelocity.multiply(leadTicks));
                 org.bukkit.util.Vector horizontal = predicted.subtract(bukkitFox.getLocation().toVector()).setY(0);
                 double gap = Math.sqrt(horizontal.lengthSquared());
-                double horizontalSpeed = Math.min(diving ? 0.72 : 0.43, gap * (diving ? 0.36 : 0.22));
-                double downVelocity = diving ? Math.max(-1.05, motion.getY() - 0.12) : motion.getY();
+                double horizontalSpeed = Math.min(diving ? 0.72 : 0.43,
+                        gap * (glideAssist ? (diving ? 0.48 : 0.27) : (diving ? 0.36 : 0.22)));
+                double downVelocity = diving
+                        ? Math.max(glideAssist ? -0.78 : -1.05,
+                                motion.getY() - (glideAssist ? 0.075 : 0.12))
+                        : motion.getY();
                 if (gap > 0.05) {
                     horizontal.multiply(horizontalSpeed / gap);
                     bukkitFox.setVelocity(new org.bukkit.util.Vector(horizontal.getX(),
