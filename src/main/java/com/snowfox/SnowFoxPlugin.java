@@ -100,20 +100,20 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         printStartupBanner();
     }
     private void printStartupBanner() {
-        // Pixel-art silhouette inspired by the square Minecraft fox head.
-        // ASCII keeps the banner aligned in both terminal and hosting-panel logs.
+        // Front-facing Minecraft snow fox: cyan-tipped ears, square dark
+        // eyes, pale cheeks and a centered dark nose.
         String[] lines = {
-                "   ##              ##",
-                "   ####          ####",
-                "   ##################",
-                "   ##################",
-                "   ##  []      []  ##",
-                "   ##              ##",
-                "   ##  ....  ....  ##",
-                "   ##  ..........  ##",
-                "     ....  ##  ....",
-                "       ..........",
-                "         ......",
+                "     ▒▒▒            ▒▒▒",
+                "     ▒░░▒          ▒░░▒",
+                "     ░░░░░░░░░░░░░░░░",
+                "     ░░▓▓░░░░░░▓▓░░░░",
+                "     ░░▓▓░░░░░░▓▓░░░░",
+                "     ░░░░░░░░░░░░░░░░",
+                "   ▓▓▓░░░░░░░░░░░░▓▓▓",
+                "   ▓▓▓░░░░░░░░░░░░▓▓▓",
+                "     ░░░░░░██░░░░░░",
+                "     ░░░░░░██░░░░░░",
+                "       ░░░░░░░░░░",
                 "",
                 "      S N O W F O X",
                 "   Enabled v" + getDescription().getVersion() + " | Ready to pounce!"
