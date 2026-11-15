@@ -14,6 +14,7 @@ effects:
 combat:
   wolf-style-attacks: false
   attack-style: wolf # wolf keeps existing attacks; fox enables owner-directed pouncing
+  chain-pounces: false # true allows repeated hits after Wind Burst bounces in fox style
 
 fox:
   allow-natural-aging: false

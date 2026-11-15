@@ -49,6 +49,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     boolean snowflakeParticlesEnabled = true;
     boolean wolfStyleCombatEnabled = false;
     String attackStyle = "wolf";
+    boolean chainPouncesEnabled = false;
     final Map<UUID, UUID> pounceTargets = new HashMap<>();
     final Map<UUID, Long> pounceUntil = new HashMap<>();
     int particleAmount = 1;
@@ -65,6 +66,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         snowflakeParticlesEnabled = getConfig().getBoolean("effects.allow-snowflake-particles", true);
         wolfStyleCombatEnabled = getConfig().getBoolean("combat.wolf-style-attacks", false);
         attackStyle = getConfig().getString("combat.attack-style", "wolf").equalsIgnoreCase("fox") ? "fox" : "wolf";
+        chainPouncesEnabled = getConfig().getBoolean("combat.chain-pounces", false);
         particleAmount = Math.max(0, Math.min(100, getConfig().getInt("effects.snowflake-particle-amount", 1)));
         defaultAging = getConfig().getBoolean("fox.allow-natural-aging", false);
     }
@@ -121,6 +123,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         fox.setRemoveWhenFarAway(false);
         fox.setCanPickupItems(true);
         fox.setAgeLock(!pet.aging);
+        if (!pet.aging && fox.isAdult()) fox.setBaby();
         fox.setFoxType(pet.variant);
         fox.setCustomName(pet.name);
         fox.setCustomNameVisible(false);
@@ -153,6 +156,8 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         private final Pet pet;
         private int cooldown, windup;
         private double highestY;
+        private double lastHitY;
+        private boolean waitingForChainRise;
         private boolean hasDescended;
         private boolean diving;
         private boolean airborne;
@@ -169,9 +174,10 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             UUID id = pounceTargets.get(fox.getUUID());
             if (id == null || ticks >= pounceUntil.getOrDefault(fox.getUUID(), 0L)) return null;
             Entity entity = Bukkit.getEntity(id);
-            if (!(entity instanceof LivingEntity victim) || victim instanceof Player || victim instanceof Fox
+            if (!(entity instanceof LivingEntity victim) || victim instanceof Fox
                     || !victim.isValid() || victim.isDead() || victim.getWorld() != fox.getBukkitEntity().getWorld()
                     || victim.getLocation().distanceSquared(fox.getBukkitEntity().getLocation()) > 256) return null;
+            if (victim instanceof Player player && !isAuthorizedPlayerTarget((Fox) fox.getBukkitEntity(), player)) return null;
             return victim;
         }
         @Override public boolean canUse() { return selectedTarget() != null; }
@@ -185,6 +191,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             struckThisPounce = false;
             flightTicks = 0;
             hasDescended = false;
+            waitingForChainRise = false;
         }
         @Override public void tick() {
             LivingEntity target = selectedTarget();
@@ -200,15 +207,31 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 fox.getNavigation().stop();
                 org.bukkit.util.Vector motion = bukkitFox.getVelocity();
                 highestY = Math.max(highestY, bukkitFox.getLocation().getY());
-                if (!diving && (motion.getY() <= 0.05 || flightTicks >= 18)) diving = true;
+                // A Wind Burst bounce is a new ascent, not a continuation of the dive.
+                // Re-arm only after Snowy has risen well above the previous hit.
+                if (chainPouncesEnabled && waitingForChainRise && motion.getY() > 0.05
+                        && bukkitFox.getLocation().getY() >= lastHitY + 1.25) {
+                    waitingForChainRise = false;
+                    struckThisPounce = false;
+                    hasDescended = false;
+                    highestY = bukkitFox.getLocation().getY();
+                }
+                if (!diving && motion.getY() <= 0.05 && flightTicks > 2) diving = true;
                 if (diving && motion.getY() < -0.08) hasDescended = true;
-                if (diving) {
-                    org.bukkit.util.Vector toTarget = target.getLocation().toVector()
-                            .subtract(bukkitFox.getLocation().toVector());
-                    org.bukkit.util.Vector horizontal = toTarget.clone().setY(0);
-                    if (horizontal.lengthSquared() > 0.01) horizontal.normalize().multiply(0.45);
+                // Steer toward the target throughout a Wind Burst bounce, especially
+                // on the way down, so the next impact can connect.
+                org.bukkit.util.Vector toTarget = target.getLocation().toVector()
+                        .subtract(bukkitFox.getLocation().toVector());
+                org.bukkit.util.Vector horizontal = toTarget.clone().setY(0);
+                double horizontalSpeed = diving ? 0.62 : 0.34;
+                if (horizontal.lengthSquared() > 0.01) {
+                    horizontal.normalize().multiply(horizontalSpeed);
                     bukkitFox.setVelocity(new org.bukkit.util.Vector(horizontal.getX(),
-                            Math.max(-1.25, motion.getY() - 0.22), horizontal.getZ()));
+                            diving ? Math.max(-1.25, motion.getY() - 0.22) : motion.getY(),
+                            horizontal.getZ()));
+                } else if (diving) {
+                    bukkitFox.setVelocity(new org.bukkit.util.Vector(0,
+                            Math.max(-1.25, motion.getY() - 0.22), 0));
                 }
                 // Apply damage on the actual descending collision, once per leap.
                 if (diving && hasDescended && !struckThisPounce
@@ -219,6 +242,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                             ((org.bukkit.craftbukkit.entity.CraftEntity) target).getHandle();
                     if (fox.doHurtTarget((net.minecraft.server.level.ServerLevel) fox.level(), victim)) {
                         struckThisPounce = true;
+                        lastHitY = bukkitFox.getLocation().getY();
                         // Vanilla mace smash/Wind Burst logic is player-specific. Reproduce
                         // the Wind Burst launch for a fox holding an enchanted mace.
                         ItemStack held = bukkitFox.getEquipment().getItemInMainHand();
@@ -227,6 +251,9 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                         if (windBurst > 0 && highestY - target.getLocation().getY() >= 1.5) {
                             org.bukkit.util.Vector v = bukkitFox.getVelocity();
                             bukkitFox.setVelocity(v.setY(0.9 + 0.35 * windBurst));
+                            diving = false;
+                            hasDescended = false;
+                            waitingForChainRise = true;
                         }
                     }
                 }
@@ -250,6 +277,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                         flightTicks = 0;
                         highestY = bukkitFox.getLocation().getY();
                         hasDescended = false;
+                        waitingForChainRise = false;
                         cooldown = 12;
                     }
                     windup = 0;
@@ -406,6 +434,16 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         fox.getWorld().dropItemNaturally(fox.getLocation(), held.clone());
         tell(p, "&aYour fox dropped its item.");
     }
+    // Only owner-directed fox combat suppresses follow teleportation.
+    // Ordinary chicken hunting continues using the existing follow/TP rules.
+    boolean huntingOwnerTarget(Fox fox) {
+        if (!wolfStyleCombatEnabled || !"fox".equals(attackStyle)) return false;
+        UUID targetId = pounceTargets.get(fox.getUniqueId());
+        if (targetId == null || ticks >= pounceUntil.getOrDefault(fox.getUniqueId(), 0L)) return false;
+        Entity target = Bukkit.getEntity(targetId);
+        return target instanceof LivingEntity living && living.isValid() && !living.isDead()
+                && living.getWorld() == fox.getWorld();
+    }
     void tick() {
         ticks += 5;
         dropped.entrySet().removeIf(e -> ticks >= e.getValue().expires());
@@ -423,7 +461,10 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 fox.setSitting(true);
             } else {
                 fox.setSitting(false);
-                if (owner.getWorld() != fox.getWorld()
+                if (huntingOwnerTarget(fox)) {
+                    pet.stuck = 0;
+                    pet.previous = null;
+                } else if (owner.getWorld() != fox.getWorld()
                         || fox.getLocation().distanceSquared(owner.getLocation()) > teleportDistance * teleportDistance) {
                     fox.teleport(owner.getLocation());
                     pet.stuck = 0;
@@ -491,7 +532,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     }
     @EventHandler public void onTarget(EntityTargetEvent e) {
         if (e.getEntity() instanceof Fox fox && owners.containsKey(fox.getUniqueId())) {
-            if (e.getTarget() instanceof Player || e.getTarget() instanceof Fox
+            if ((e.getTarget() instanceof Player player && !isAuthorizedPlayerTarget(fox, player)) || e.getTarget() instanceof Fox
                     || (pets.get(owners.get(fox.getUniqueId())) != null
                     && pets.get(owners.get(fox.getUniqueId())).stay)) e.setCancelled(true);
         }
@@ -508,19 +549,33 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             directFoxAttack(owner, target);
         }
     }
+    boolean allowedPvP(Player owner, Player target) {
+        if (owner.getUniqueId().equals(target.getUniqueId()) || !owner.getWorld().getPVP()
+                || !target.getWorld().getPVP() || owner.getGameMode() == GameMode.SPECTATOR
+                || target.getGameMode() == GameMode.SPECTATOR
+                || target.getGameMode() == GameMode.CREATIVE) return false;
+        org.bukkit.scoreboard.Team team = owner.getScoreboard().getEntryTeam(owner.getName());
+        return team == null || team.allowFriendlyFire()
+                || !team.hasEntry(target.getName());
+    }
+    boolean isAuthorizedPlayerTarget(Fox fox, Player target) {
+        UUID ownerId = owners.get(fox.getUniqueId());
+        Player owner = ownerId == null ? null : Bukkit.getPlayer(ownerId);
+        return owner != null && allowedPvP(owner, target)
+                && target.getUniqueId().equals(pounceTargets.get(fox.getUniqueId()))
+                && ticks < pounceUntil.getOrDefault(fox.getUniqueId(), 0L);
+    }
     void directFoxAttack(Player owner, LivingEntity target) {
-        if (target instanceof Player || target instanceof Fox || !target.isValid() || target.isDead()) return;
+        if (target instanceof Fox || !target.isValid() || target.isDead()
+                || (target instanceof Player player && !allowedPvP(owner, player))) return;
         Pet pet = pets.get(owner.getUniqueId());
         if (pet == null || pet.stay) return;
         Fox fox = find(pet, false);
         if (fox == null || fox.getWorld() != target.getWorld()
                 || fox.getLocation().distanceSquared(target.getLocation()) > 16 * 16) return;
-        if ("fox".equals(attackStyle)) {
-            pounceTargets.put(fox.getUniqueId(), target.getUniqueId());
-            pounceUntil.put(fox.getUniqueId(), ticks + 200);
-        } else {
-            fox.setTarget(target);
-        }
+        pounceTargets.put(fox.getUniqueId(), target.getUniqueId());
+        pounceUntil.put(fox.getUniqueId(), ticks + 200);
+        if (!"fox".equals(attackStyle)) fox.setTarget(target);
     }
     @EventHandler public void onInteract(PlayerInteractEntityEvent e) {
         if (e.getHand() != EquipmentSlot.HAND) return;
@@ -541,7 +596,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         }
         if (!hand.getType().isAir()) return;
         sit(fox, pet, !pet.stay);
-        notifyMovement(p, pet, pet.stay ? "&eSnowy is sitting!" : "&aSnowy is following!");
+        notifyMovement(p, pet, pet.stay ? "&e" + pet.name + " is sitting!" : "&a" + pet.name + " is following!");
     }
     boolean isChicken(ItemStack item) {
         if (item == null) return false;
@@ -619,17 +674,20 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 String choice = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : (pet.aging ? "off" : "on");
                 if (!choice.equals("on") && !choice.equals("off")) { tell(p, "&cUsage: /snowfox grow [on|off]"); break; }
                 pet.aging = choice.equals("on");
-                if (fox != null) fox.setAgeLock(!pet.aging);
+                if (fox != null) {
+                    if (pet.aging) fox.setAgeLock(false);
+                    else { fox.setBaby(); fox.setAgeLock(true); }
+                }
                 save();
                 tell(p, pet.aging ? "&aYour fox can now grow naturally over time." : "&eYour fox's age is now frozen.");
             }
             case "tp" -> {
                 if (fox == null) { tell(p, "&cFox unavailable."); break; }
-                fox.teleport(p.getLocation()); sit(fox, pet, false); tell(p, "&aSnowy teleported!");
+                fox.teleport(p.getLocation()); sit(fox, pet, false); tell(p, "&a" + pet.name + " teleported!");
             }
             case "stay" -> {
                 if (fox == null) { tell(p, "&cSummon your fox first."); break; }
-                sit(fox, pet, !pet.stay); notifyMovement(p, pet, pet.stay ? "&eSnowy is sitting!" : "&aSnowy is following!");
+                sit(fox, pet, !pet.stay); notifyMovement(p, pet, pet.stay ? "&e" + pet.name + " is sitting!" : "&a" + pet.name + " is following!");
             }
             case "messages" -> {
                 Pet settings = pets.computeIfAbsent(p.getUniqueId(), Pet::new);
