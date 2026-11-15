@@ -100,21 +100,20 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         printStartupBanner();
     }
     private void printStartupBanner() {
-        // Front-facing snowy Minecraft fox: cyan ear tips, square eyes,
-        // pale muzzle and a dark nose. Monospace-safe console pixel art.
+        // Front-facing Minecraft snow fox: cyan-tipped ears, square dark
+        // eyes, pale cheeks and a centered dark nose.
         String[] lines = {
-                "       CC          CC",
-                "     CCCC          CCCC",
-                "    WWWWWWWWWWWWWWWWWW",
-                "    WW  EE      EE  WW",
-                "    WWWWWWWWWWWWWWWWWW",
-                "    WW              WW",
-                "    DD              DD",
-                "    DD              DD",
-                "    WWWW          WWWW",
-                "    WWWWWW  NN  WWWWWW",
-                "      WWWWWWWWWWWWWW",
-                "        WWWWWWWWWW",
+                "     ▒▒▒            ▒▒▒",
+                "     ▒░░▒          ▒░░▒",
+                "     ░░░░░░░░░░░░░░░░",
+                "     ░░▓▓░░░░░░▓▓░░░░",
+                "     ░░▓▓░░░░░░▓▓░░░░",
+                "     ░░░░░░░░░░░░░░░░",
+                "   ▓▓▓░░░░░░░░░░░░▓▓▓",
+                "   ▓▓▓░░░░░░░░░░░░▓▓▓",
+                "     ░░░░░░██░░░░░░",
+                "     ░░░░░░██░░░░░░",
+                "       ░░░░░░░░░░",
                 "",
                 "      S N O W F O X",
                 "   Enabled v" + getDescription().getVersion() + " | Ready to pounce!"
