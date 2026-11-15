@@ -153,6 +153,8 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         private final Pet pet;
         private int cooldown, windup;
         private double highestY;
+        private double lastHitY;
+        private boolean waitingForChainRise;
         private boolean hasDescended;
         private boolean diving;
         private boolean airborne;
@@ -185,6 +187,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             struckThisPounce = false;
             flightTicks = 0;
             hasDescended = false;
+            waitingForChainRise = false;
         }
         @Override public void tick() {
             LivingEntity target = selectedTarget();
@@ -200,7 +203,16 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 fox.getNavigation().stop();
                 org.bukkit.util.Vector motion = bukkitFox.getVelocity();
                 highestY = Math.max(highestY, bukkitFox.getLocation().getY());
-                if (!diving && (motion.getY() <= 0.05 || flightTicks >= 18)) diving = true;
+                // A Wind Burst bounce is a new ascent, not a continuation of the dive.
+                // Re-arm only after Snowy has risen well above the previous hit.
+                if (waitingForChainRise && motion.getY() > 0.05
+                        && bukkitFox.getLocation().getY() >= lastHitY + 1.25) {
+                    waitingForChainRise = false;
+                    struckThisPounce = false;
+                    hasDescended = false;
+                    highestY = bukkitFox.getLocation().getY();
+                }
+                if (!diving && motion.getY() <= 0.05 && flightTicks > 2) diving = true;
                 if (diving && motion.getY() < -0.08) hasDescended = true;
                 if (diving) {
                     org.bukkit.util.Vector toTarget = target.getLocation().toVector()
@@ -219,6 +231,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                             ((org.bukkit.craftbukkit.entity.CraftEntity) target).getHandle();
                     if (fox.doHurtTarget((net.minecraft.server.level.ServerLevel) fox.level(), victim)) {
                         struckThisPounce = true;
+                        lastHitY = bukkitFox.getLocation().getY();
                         // Vanilla mace smash/Wind Burst logic is player-specific. Reproduce
                         // the Wind Burst launch for a fox holding an enchanted mace.
                         ItemStack held = bukkitFox.getEquipment().getItemInMainHand();
@@ -227,6 +240,9 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                         if (windBurst > 0 && highestY - target.getLocation().getY() >= 1.5) {
                             org.bukkit.util.Vector v = bukkitFox.getVelocity();
                             bukkitFox.setVelocity(v.setY(0.9 + 0.35 * windBurst));
+                            diving = false;
+                            hasDescended = false;
+                            waitingForChainRise = true;
                         }
                     }
                 }
@@ -250,6 +266,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                         flightTicks = 0;
                         highestY = bukkitFox.getLocation().getY();
                         hasDescended = false;
+                        waitingForChainRise = false;
                         cooldown = 12;
                     }
                     windup = 0;
