@@ -220,10 +220,15 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 if (diving && motion.getY() < -0.08) hasDescended = true;
                 // Steer toward the target throughout a Wind Burst bounce, especially
                 // on the way down, so the next impact can connect.
-                org.bukkit.util.Vector toTarget = target.getLocation().toVector()
-                        .subtract(bukkitFox.getLocation().toVector());
-                org.bukkit.util.Vector horizontal = toTarget.clone().setY(0);
-                double horizontalSpeed = diving ? 0.62 : 0.34;
+                // Lead moving targets slightly; avoid chasing their previous position
+                // during the long Wind Burst ascent and descent.
+                org.bukkit.util.Vector targetVelocity = target.getVelocity().clone().setY(0);
+                if (targetVelocity.lengthSquared() > 0.36) targetVelocity.normalize().multiply(0.6);
+                double leadTicks = diving ? 3.0 : 5.0;
+                org.bukkit.util.Vector predicted = target.getLocation().toVector()
+                        .add(targetVelocity.multiply(leadTicks));
+                org.bukkit.util.Vector horizontal = predicted.subtract(bukkitFox.getLocation().toVector()).setY(0);
+                double horizontalSpeed = diving ? 0.72 : 0.43;
                 if (horizontal.lengthSquared() > 0.01) {
                     horizontal.normalize().multiply(horizontalSpeed);
                     bukkitFox.setVelocity(new org.bukkit.util.Vector(horizontal.getX(),
@@ -242,6 +247,9 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                             ((org.bukkit.craftbukkit.entity.CraftEntity) target).getHandle();
                     if (fox.doHurtTarget((net.minecraft.server.level.ServerLevel) fox.level(), victim)) {
                         struckThisPounce = true;
+                        // A landed hit keeps owner-directed combat alive for another
+                        // ten seconds, rather than expiring mid-chain.
+                        pounceUntil.put(fox.getUUID(), ticks + 200);
                         lastHitY = bukkitFox.getLocation().getY();
                         // Vanilla mace smash/Wind Burst logic is player-specific. Reproduce
                         // the Wind Burst launch for a fox holding an enchanted mace.
@@ -254,6 +262,8 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                             diving = false;
                             hasDescended = false;
                             waitingForChainRise = true;
+                            // Keep the active chain from expiring during a tall bounce.
+                            pounceUntil.put(fox.getUUID(), ticks + 200);
                         }
                     }
                 }
