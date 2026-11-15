@@ -123,6 +123,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         fox.setRemoveWhenFarAway(false);
         fox.setCanPickupItems(true);
         fox.setAgeLock(!pet.aging);
+        if (!pet.aging && fox.isAdult()) fox.setBaby();
         fox.setFoxType(pet.variant);
         fox.setCustomName(pet.name);
         fox.setCustomNameVisible(false);
@@ -658,7 +659,10 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 String choice = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : (pet.aging ? "off" : "on");
                 if (!choice.equals("on") && !choice.equals("off")) { tell(p, "&cUsage: /snowfox grow [on|off]"); break; }
                 pet.aging = choice.equals("on");
-                if (fox != null) fox.setAgeLock(!pet.aging);
+                if (fox != null) {
+                    if (pet.aging) fox.setAgeLock(false);
+                    else { fox.setBaby(); fox.setAgeLock(true); }
+                }
                 save();
                 tell(p, pet.aging ? "&aYour fox can now grow naturally over time." : "&eYour fox's age is now frozen.");
             }
