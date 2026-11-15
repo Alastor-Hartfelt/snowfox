@@ -100,18 +100,27 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         printStartupBanner();
     }
     private void printStartupBanner() {
+        // Pixel-art silhouette inspired by the square Minecraft fox head.
+        // ASCII keeps the banner aligned in both terminal and hosting-panel logs.
         String[] lines = {
-                "   /\\   /\\",
-                "  /  \\_/  \\",
-                " (  o   o  )",
-                "  \\   ^   /",
-                "   \\_____/",
+                "   ##              ##",
+                "   ####          ####",
+                "   ##################",
+                "   ##################",
+                "   ##  []      []  ##",
+                "   ##              ##",
+                "   ##  ....  ....  ##",
+                "   ##  ..........  ##",
+                "     ....  ##  ....",
+                "       ..........",
+                "         ......",
                 "",
-                "   S N O W F O X",
+                "      S N O W F O X",
                 "   Enabled v" + getDescription().getVersion() + " | Ready to pounce!"
         };
         for (String line : lines) getLogger().info(line);
     }
+
     @Override public void onDisable() { save(); }
     void tell(Player p, String s) { p.sendMessage(ChatColor.translateAlternateColorCodes('&', "&bSnowFox &7» " + s)); }
     void notifyMovement(Player p, Pet pet, String message) {
