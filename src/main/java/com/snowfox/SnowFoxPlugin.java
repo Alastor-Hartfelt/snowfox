@@ -97,6 +97,20 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         }
         Bukkit.getScheduler().runTaskTimer(this, this::tick, 5, 5);
         Bukkit.getScheduler().runTaskTimer(this, this::save, 1200, 1200);
+        printStartupBanner();
+    }
+    private void printStartupBanner() {
+        String[] lines = {
+                "   /\\\\   /\\\\",
+                "  /  \\\\_/  \\\\",
+                " (  o   o  )",
+                "  \\\\   ^   /",
+                "   \\\\_____/",
+                "",
+                "   S N O W F O X",
+                "   Enabled v" + getDescription().getVersion() + " | Ready to pounce!"
+        };
+        for (String line : lines) getLogger().info(line);
     }
     @Override public void onDisable() { save(); }
     void tell(Player p, String s) { p.sendMessage(ChatColor.translateAlternateColorCodes('&', "&bSnowFox &7» " + s)); }
