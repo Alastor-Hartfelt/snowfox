@@ -101,11 +101,11 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     }
     private void printStartupBanner() {
         String[] lines = {
-                "   /\\\\   /\\\\",
-                "  /  \\\\_/  \\\\",
+                "   /\\   /\\",
+                "  /  \\_/  \\",
                 " (  o   o  )",
-                "  \\\\   ^   /",
-                "   \\\\_____/",
+                "  \\   ^   /",
+                "   \\_____/",
                 "",
                 "   S N O W F O X",
                 "   Enabled v" + getDescription().getVersion() + " | Ready to pounce!"
