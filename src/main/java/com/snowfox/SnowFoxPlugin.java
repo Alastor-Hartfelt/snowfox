@@ -174,9 +174,10 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             UUID id = pounceTargets.get(fox.getUUID());
             if (id == null || ticks >= pounceUntil.getOrDefault(fox.getUUID(), 0L)) return null;
             Entity entity = Bukkit.getEntity(id);
-            if (!(entity instanceof LivingEntity victim) || victim instanceof Player || victim instanceof Fox
+            if (!(entity instanceof LivingEntity victim) || victim instanceof Fox
                     || !victim.isValid() || victim.isDead() || victim.getWorld() != fox.getBukkitEntity().getWorld()
                     || victim.getLocation().distanceSquared(fox.getBukkitEntity().getLocation()) > 256) return null;
+            if (victim instanceof Player player && !isAuthorizedPlayerTarget((Fox) fox.getBukkitEntity(), player)) return null;
             return victim;
         }
         @Override public boolean canUse() { return selectedTarget() != null; }
@@ -531,7 +532,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
     }
     @EventHandler public void onTarget(EntityTargetEvent e) {
         if (e.getEntity() instanceof Fox fox && owners.containsKey(fox.getUniqueId())) {
-            if (e.getTarget() instanceof Player || e.getTarget() instanceof Fox
+            if ((e.getTarget() instanceof Player player && !isAuthorizedPlayerTarget(fox, player)) || e.getTarget() instanceof Fox
                     || (pets.get(owners.get(fox.getUniqueId())) != null
                     && pets.get(owners.get(fox.getUniqueId())).stay)) e.setCancelled(true);
         }
@@ -548,19 +549,33 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             directFoxAttack(owner, target);
         }
     }
+    boolean allowedPvP(Player owner, Player target) {
+        if (owner.getUniqueId().equals(target.getUniqueId()) || !owner.getWorld().getPVP()
+                || !target.getWorld().getPVP() || owner.getGameMode() == GameMode.SPECTATOR
+                || target.getGameMode() == GameMode.SPECTATOR
+                || target.getGameMode() == GameMode.CREATIVE) return false;
+        org.bukkit.scoreboard.Team team = owner.getScoreboard().getEntryTeam(owner.getName());
+        return team == null || team.allowFriendlyFire()
+                || !team.hasEntry(target.getName());
+    }
+    boolean isAuthorizedPlayerTarget(Fox fox, Player target) {
+        UUID ownerId = owners.get(fox.getUniqueId());
+        Player owner = ownerId == null ? null : Bukkit.getPlayer(ownerId);
+        return owner != null && allowedPvP(owner, target)
+                && target.getUniqueId().equals(pounceTargets.get(fox.getUniqueId()))
+                && ticks < pounceUntil.getOrDefault(fox.getUniqueId(), 0L);
+    }
     void directFoxAttack(Player owner, LivingEntity target) {
-        if (target instanceof Player || target instanceof Fox || !target.isValid() || target.isDead()) return;
+        if (target instanceof Fox || !target.isValid() || target.isDead()
+                || (target instanceof Player player && !allowedPvP(owner, player))) return;
         Pet pet = pets.get(owner.getUniqueId());
         if (pet == null || pet.stay) return;
         Fox fox = find(pet, false);
         if (fox == null || fox.getWorld() != target.getWorld()
                 || fox.getLocation().distanceSquared(target.getLocation()) > 16 * 16) return;
-        if ("fox".equals(attackStyle)) {
-            pounceTargets.put(fox.getUniqueId(), target.getUniqueId());
-            pounceUntil.put(fox.getUniqueId(), ticks + 200);
-        } else {
-            fox.setTarget(target);
-        }
+        pounceTargets.put(fox.getUniqueId(), target.getUniqueId());
+        pounceUntil.put(fox.getUniqueId(), ticks + 200);
+        if (!"fox".equals(attackStyle)) fox.setTarget(target);
     }
     @EventHandler public void onInteract(PlayerInteractEntityEvent e) {
         if (e.getHand() != EquipmentSlot.HAND) return;
