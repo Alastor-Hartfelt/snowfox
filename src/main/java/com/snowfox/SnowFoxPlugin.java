@@ -97,30 +97,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         }
         Bukkit.getScheduler().runTaskTimer(this, this::tick, 5, 5);
         Bukkit.getScheduler().runTaskTimer(this, this::save, 1200, 1200);
-        printStartupBanner();
     }
-    private void printStartupBanner() {
-        // Front-facing Minecraft snow fox: cyan-tipped ears, square dark
-        // eyes, pale cheeks and a centered dark nose.
-        String[] lines = {
-                "     ▒▒▒            ▒▒▒",
-                "     ▒░░▒          ▒░░▒",
-                "     ░░░░░░░░░░░░░░░░",
-                "     ░░▓▓░░░░░░▓▓░░░░",
-                "     ░░▓▓░░░░░░▓▓░░░░",
-                "     ░░░░░░░░░░░░░░░░",
-                "   ▓▓▓░░░░░░░░░░░░▓▓▓",
-                "   ▓▓▓░░░░░░░░░░░░▓▓▓",
-                "     ░░░░░░██░░░░░░",
-                "     ░░░░░░██░░░░░░",
-                "       ░░░░░░░░░░",
-                "",
-                "      S N O W F O X",
-                "   Enabled v" + getDescription().getVersion() + " | Ready to pounce!"
-        };
-        for (String line : lines) getLogger().info(line);
-    }
-
     @Override public void onDisable() { save(); }
     void tell(Player p, String s) { p.sendMessage(ChatColor.translateAlternateColorCodes('&', "&bSnowFox &7» " + s)); }
     void notifyMovement(Player p, Pet pet, String message) {
@@ -247,19 +224,21 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 // during the long Wind Burst ascent and descent.
                 org.bukkit.util.Vector targetVelocity = target.getVelocity().clone().setY(0);
                 if (targetVelocity.lengthSquared() > 0.36) targetVelocity.normalize().multiply(0.6);
-                double leadTicks = diving ? 3.0 : 5.0;
+                // Short lead on descent: long prediction overshoots slow targets
+                // (especially Wardens). Reduce speed as the fox closes in.
+                double leadTicks = diving ? 1.0 : 2.5;
                 org.bukkit.util.Vector predicted = target.getLocation().toVector()
                         .add(targetVelocity.multiply(leadTicks));
                 org.bukkit.util.Vector horizontal = predicted.subtract(bukkitFox.getLocation().toVector()).setY(0);
-                double horizontalSpeed = diving ? 0.72 : 0.43;
-                if (horizontal.lengthSquared() > 0.01) {
-                    horizontal.normalize().multiply(horizontalSpeed);
+                double gap = Math.sqrt(horizontal.lengthSquared());
+                double horizontalSpeed = Math.min(diving ? 0.72 : 0.43, gap * (diving ? 0.36 : 0.22));
+                double downVelocity = diving ? Math.max(-1.05, motion.getY() - 0.12) : motion.getY();
+                if (gap > 0.05) {
+                    horizontal.multiply(horizontalSpeed / gap);
                     bukkitFox.setVelocity(new org.bukkit.util.Vector(horizontal.getX(),
-                            diving ? Math.max(-1.25, motion.getY() - 0.22) : motion.getY(),
-                            horizontal.getZ()));
+                            downVelocity, horizontal.getZ()));
                 } else if (diving) {
-                    bukkitFox.setVelocity(new org.bukkit.util.Vector(0,
-                            Math.max(-1.25, motion.getY() - 0.22), 0));
+                    bukkitFox.setVelocity(new org.bukkit.util.Vector(0, downVelocity, 0));
                 }
                 // Apply damage on the actual descending collision, once per leap.
                 if (diving && hasDescended && !struckThisPounce
