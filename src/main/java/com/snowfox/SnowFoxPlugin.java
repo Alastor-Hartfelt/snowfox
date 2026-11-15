@@ -581,7 +581,7 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         }
         if (!hand.getType().isAir()) return;
         sit(fox, pet, !pet.stay);
-        notifyMovement(p, pet, pet.stay ? "&eSnowy is sitting!" : "&aSnowy is following!");
+        notifyMovement(p, pet, pet.stay ? "&e" + pet.name + " is sitting!" : "&a" + pet.name + " is following!");
     }
     boolean isChicken(ItemStack item) {
         if (item == null) return false;
@@ -668,11 +668,11 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
             }
             case "tp" -> {
                 if (fox == null) { tell(p, "&cFox unavailable."); break; }
-                fox.teleport(p.getLocation()); sit(fox, pet, false); tell(p, "&aSnowy teleported!");
+                fox.teleport(p.getLocation()); sit(fox, pet, false); tell(p, "&a" + pet.name + " teleported!");
             }
             case "stay" -> {
                 if (fox == null) { tell(p, "&cSummon your fox first."); break; }
-                sit(fox, pet, !pet.stay); notifyMovement(p, pet, pet.stay ? "&eSnowy is sitting!" : "&aSnowy is following!");
+                sit(fox, pet, !pet.stay); notifyMovement(p, pet, pet.stay ? "&e" + pet.name + " is sitting!" : "&a" + pet.name + " is following!");
             }
             case "messages" -> {
                 Pet settings = pets.computeIfAbsent(p.getUniqueId(), Pet::new);
