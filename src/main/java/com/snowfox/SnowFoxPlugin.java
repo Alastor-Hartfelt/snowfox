@@ -214,13 +214,20 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 }
                 if (!diving && motion.getY() <= 0.05 && flightTicks > 2) diving = true;
                 if (diving && motion.getY() < -0.08) hasDescended = true;
-                if (diving) {
-                    org.bukkit.util.Vector toTarget = target.getLocation().toVector()
-                            .subtract(bukkitFox.getLocation().toVector());
-                    org.bukkit.util.Vector horizontal = toTarget.clone().setY(0);
-                    if (horizontal.lengthSquared() > 0.01) horizontal.normalize().multiply(0.45);
+                // Steer toward the target throughout a Wind Burst bounce, especially
+                // on the way down, so the next impact can connect.
+                org.bukkit.util.Vector toTarget = target.getLocation().toVector()
+                        .subtract(bukkitFox.getLocation().toVector());
+                org.bukkit.util.Vector horizontal = toTarget.clone().setY(0);
+                double horizontalSpeed = diving ? 0.62 : 0.34;
+                if (horizontal.lengthSquared() > 0.01) {
+                    horizontal.normalize().multiply(horizontalSpeed);
                     bukkitFox.setVelocity(new org.bukkit.util.Vector(horizontal.getX(),
-                            Math.max(-1.25, motion.getY() - 0.22), horizontal.getZ()));
+                            diving ? Math.max(-1.25, motion.getY() - 0.22) : motion.getY(),
+                            horizontal.getZ()));
+                } else if (diving) {
+                    bukkitFox.setVelocity(new org.bukkit.util.Vector(0,
+                            Math.max(-1.25, motion.getY() - 0.22), 0));
                 }
                 // Apply damage on the actual descending collision, once per leap.
                 if (diving && hasDescended && !struckThisPounce
@@ -423,6 +430,16 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
         fox.getWorld().dropItemNaturally(fox.getLocation(), held.clone());
         tell(p, "&aYour fox dropped its item.");
     }
+    // Only owner-directed fox combat suppresses follow teleportation.
+    // Ordinary chicken hunting continues using the existing follow/TP rules.
+    boolean huntingOwnerTarget(Fox fox) {
+        if (!wolfStyleCombatEnabled || !"fox".equals(attackStyle)) return false;
+        UUID targetId = pounceTargets.get(fox.getUniqueId());
+        if (targetId == null || ticks >= pounceUntil.getOrDefault(fox.getUniqueId(), 0L)) return false;
+        Entity target = Bukkit.getEntity(targetId);
+        return target instanceof LivingEntity living && living.isValid() && !living.isDead()
+                && living.getWorld() == fox.getWorld();
+    }
     void tick() {
         ticks += 5;
         dropped.entrySet().removeIf(e -> ticks >= e.getValue().expires());
@@ -440,7 +457,10 @@ public final class SnowFoxPlugin extends JavaPlugin implements Listener, Command
                 fox.setSitting(true);
             } else {
                 fox.setSitting(false);
-                if (owner.getWorld() != fox.getWorld()
+                if (huntingOwnerTarget(fox)) {
+                    pet.stuck = 0;
+                    pet.previous = null;
+                } else if (owner.getWorld() != fox.getWorld()
                         || fox.getLocation().distanceSquared(owner.getLocation()) > teleportDistance * teleportDistance) {
                     fox.teleport(owner.getLocation());
                     pet.stuck = 0;
